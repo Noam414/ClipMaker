@@ -48,6 +48,17 @@ approval. Follow these rules:
 - **Persistence**: nothing survives between nights except what is pushed to git. Don't commit files over about 5 MB, model weights or generated videos. Download models at runtime into a cache directory that git ignores.
 - **Time**: keep a full eval run under about 10 minutes on CPU. Prefer small models (tiny or base) for tests.
 
+## Usage budget
+
+Every run counts against the owner's Claude plan, which his other projects also
+use. If a run uses up the plan, the owner can't work during the day. Keep runs lean:
+
+- **Single context.** Don't spawn subagents or agent teams, and don't start other sessions.
+- **Small context.** Don't read large files, logs or generated output in full. Use `head`, `grep`, `jq` and short summaries. Look at no more than about 6 frames per night.
+- **Time box.** Plan for about 60–75 minutes of work. After that, don't start new items.
+- **Save as you go.** After each finished item with green tests, commit, push, and update the log entry and the PR description right away. If a usage limit cuts the run short, nothing is lost and the next night continues from git.
+- **Split big items.** If an item is too big for one night, split it in `ROADMAP.md` and do only the first part.
+
 ## Nightly workflow
 
 1. **Sync.** Work on branch `claude/nightly`. Merge `origin/main` into it first. If the owner changed a file on `main`, the owner's version wins.
@@ -63,9 +74,9 @@ approval. Follow these rules:
    - captions are readable, inside the frame and in the right order (Hebrew RTL)
    - the face stays inside the crop
    - there are no black bars and nothing is stretched
-8. **Commit.** Make small, logical commits with English messages. Push `claude/nightly`.
+8. **Commit.** Make small, logical commits with English messages. Push `claude/nightly` after **each** finished item, not only at the end (see "Usage budget").
 9. **Pull request.** Make sure a PR from `claude/nightly` to `main` is open. Update its description in **Hebrew** with the overall state of the project, tonight's changes, metrics before and after, what the owner should look at, and open NEEDS_HUMAN items. In cloud sessions GitHub GraphQL is unavailable, so `gh pr create` and `gh pr edit` fail; use the REST API (`gh api repos/Noam414/ClipMaker/pulls ...`) instead. Push with `git -c push.negotiate=true push origin claude/nightly`.
-10. **Log.** Add an entry in **Hebrew** to the top of `docs/NIGHTLY_LOG.md`, using the template in that file.
+10. **Log.** Add an entry in **Hebrew** to the top of `docs/NIGHTLY_LOG.md`, using the template in that file. Create it after the first finished item and update it after each later one.
 11. **Update.** Tick the finished items in `ROADMAP.md` and update `README.md` if run instructions changed.
 
 ## Eval contract
