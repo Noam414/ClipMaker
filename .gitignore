@@ -1,0 +1,32 @@
+# Generated test media (recreate with: python3 scripts/make_test_videos.py)
+tests/fixtures/videos/
+
+# Eval artifacts (latest.json and history.jsonl are committed)
+eval/results/frames/
+eval/results/clips/
+
+# Model and data caches
+.cache/
+models/
+*.onnx
+*.bin
+*.pt
+
+# Outputs
+output/
+outputs/
+*.mp4
+*.mov
+*.mkv
+*.wav
+
+# Environments and secrets
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+.DS_Store
