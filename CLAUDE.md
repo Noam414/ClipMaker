@@ -64,7 +64,7 @@ approval. Follow these rules:
    - the face stays inside the crop
    - there are no black bars and nothing is stretched
 8. **Commit.** Make small, logical commits with English messages. Push `claude/nightly`.
-9. **Pull request.** Make sure a PR from `claude/nightly` to `main` is open. Update its description in **Hebrew** with the overall state of the project, tonight's changes, metrics before and after, what the owner should look at, and open NEEDS_HUMAN items.
+9. **Pull request.** Make sure a PR from `claude/nightly` to `main` is open. Update its description in **Hebrew** with the overall state of the project, tonight's changes, metrics before and after, what the owner should look at, and open NEEDS_HUMAN items. In cloud sessions GitHub GraphQL is unavailable, so `gh pr create` and `gh pr edit` fail; use the REST API (`gh api repos/Noam414/ClipMaker/pulls ...`) instead. Push with `git -c push.negotiate=true push origin claude/nightly`.
 10. **Log.** Add an entry in **Hebrew** to the top of `docs/NIGHTLY_LOG.md`, using the template in that file.
 11. **Update.** Tick the finished items in `ROADMAP.md` and update `README.md` if run instructions changed.
 
