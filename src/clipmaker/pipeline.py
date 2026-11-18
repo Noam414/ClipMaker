@@ -1,7 +1,7 @@
 """End-to-end pipeline: input video -> clips + clips.json.
 
 Stages so far: probe, transcribe, sentence segmentation + clip selection,
-frame-accurate cut with a centered 9:16 crop and burned-in captions.
+dead-air removal, frame-accurate cut with a centered 9:16 crop and burned-in captions.
 """
 from __future__ import annotations
 
@@ -17,7 +17,8 @@ CLIPS_SCHEMA_VERSION = 1
 
 def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | None = None,
                  transcribe: bool = True, max_clips: int = 5,
-                 render: bool = True, captions: bool = True) -> dict:
+                 render: bool = True, captions: bool = True,
+                 remove_dead_air: bool = True) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -63,19 +64,23 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
     if render and result["clips"] and info.has_video:
         from clipmaker.captions import clip_words, group_words, write_ass
         from clipmaker.render import center_crop, render_clip
+        from clipmaker.trim import kept_ranges, output_duration, remap_words
 
         crop = center_crop(info.width, info.height)
         all_words = [w for seg in result["transcript"]["segments"] for w in seg["words"]]
         for clip in result["clips"]:
             name = f"{clip['id']}.mp4"
+            ranges = kept_ranges(result["transcript"]["segments"], clip["start"], clip["end"]) \
+                if remove_dead_air else [[clip["start"], clip["end"]]]
             subs = None
             if captions:
-                subs = write_ass(group_words(clip_words(all_words, clip["start"], clip["end"]), clip["start"]),
-                                 out_dir / f"{clip['id']}.ass")
+                words = remap_words(clip_words(all_words, clip["start"], clip["end"]), ranges)
+                subs = write_ass(group_words(words, 0.0), out_dir / f"{clip['id']}.ass")
                 clip["captions_file"] = subs.name
-            render_clip(input_path, out_dir / name, clip["start"], clip["end"], crop, subtitles=subs)
+            render_clip(input_path, out_dir / name, clip["start"], clip["end"], crop, subtitles=subs, ranges=ranges)
+            clip["output_duration"] = round(output_duration(ranges), 3)
             clip["file"] = name
-            clip["kept_ranges"] = [[clip["start"], clip["end"]]]
+            clip["kept_ranges"] = ranges
             clip["crop_track"] = [[clip["start"], crop.x, crop.y, crop.w, crop.h]]
     result["timings"]["render_seconds"] = round(time.perf_counter() - t0, 3)
     result["timings"]["total_seconds"] = round(time.perf_counter() - started, 3)

@@ -22,7 +22,8 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 ## M2: Smart highlights
 - [x] Highlight scoring heuristics: hook phrases, questions, numbers, emotion words, completeness, pacing
 - [x] Optional LLM scoring behind an interface, off by default; the API key is a NEEDS_HUMAN item
-- [ ] Dead-air and filler-word removal ("um", "so", long pauses)
+- [x] Dead-air removal: long pauses shortened, filler-only chunks ("um") dropped
+- [ ] Filler words inside sentences ("um", "so"): needs accurate word timestamps (forced alignment or a model with token times)
 - [x] Eval: share of clips starting on a hook, dead air remaining
 
 ## M3: Reframing

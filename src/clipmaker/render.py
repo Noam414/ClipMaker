@@ -44,14 +44,31 @@ def _escape(path: Path) -> str:
 
 
 def render_clip(src: Path, dst: Path, start: float, end: float, crop: Crop,
-                subtitles: Path | None = None, fonts_dir: Path | None = None) -> Path:
-    """Cut [start, end) from src with re-encoding (not keyframe-snapped)."""
+                subtitles: Path | None = None, fonts_dir: Path | None = None,
+                ranges: list[list[float]] | None = None) -> Path:
+    """Cut [start, end) from src with re-encoding (not keyframe-snapped).
+
+    With several source-time `ranges` inside [start, end], only those parts are
+    kept and joined (dead-air removal). Subtitles must be timed on the output timeline.
+    """
     ffmpeg = require_tool("ffmpeg")
     dst.parent.mkdir(parents=True, exist_ok=True)
+    look = build_filter(crop, subtitles, fonts_dir)
+    if ranges and len(ranges) > 1:
+        parts, labels = [], []
+        for i, (a, b) in enumerate(ranges):
+            a, b = a - start, b - start
+            parts.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{i}]")
+            parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
+            labels.append(f"[v{i}][a{i}]")
+        graph = ";".join(parts) + f";{''.join(labels)}concat=n={len(ranges)}:v=1:a=1[cv][ca];[cv]{look}[vout]"
+        filter_args = ["-filter_complex", graph, "-map", "[vout]", "-map", "[ca]"]
+    else:
+        filter_args = ["-vf", look]
     cmd = [
         ffmpeg, "-v", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{max(end - start, 0.1):.3f}",
-        "-vf", build_filter(crop, subtitles, fonts_dir),
+        *filter_args,
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
         "-movflags", "+faststart", str(dst),
