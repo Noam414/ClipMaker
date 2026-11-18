@@ -20,10 +20,10 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Eval metrics: WER, boundary accuracy, output validity, speed
 
 ## M2: Smart highlights
-- [ ] Highlight scoring heuristics: hook phrases, questions, numbers, emotion words, completeness, pacing
+- [x] Highlight scoring heuristics: hook phrases, questions, numbers, emotion words, completeness, pacing
 - [ ] Optional LLM scoring behind an interface, off by default; the API key is a NEEDS_HUMAN item
 - [ ] Dead-air and filler-word removal ("um", "so", long pauses)
-- [ ] Eval: share of clips starting on a hook, dead air remaining
+- [x] Eval: share of clips starting on a hook, dead air remaining
 
 ## M3: Reframing
 - [ ] Face and speaker detection (CPU), with a smoothed camera path and no jitter

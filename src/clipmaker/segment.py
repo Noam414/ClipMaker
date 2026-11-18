@@ -107,12 +107,38 @@ def _candidates(sentences: list[Sentence], min_s: float, max_s: float, clean_gap
     return out
 
 
-def select_clips(candidates: list[Candidate], max_clips: int = 5) -> list[Candidate]:
-    """Greedy: best score first, no overlapping sentences. Returned in time order."""
-    chosen: list[Candidate] = []
-    for c in sorted(candidates, key=lambda c: (-c.score, c.start)):
-        if len(chosen) >= max_clips:
-            break
-        if all(c.last < o.first or c.first > o.last for o in chosen):
+def select_clips(candidates: list[Candidate], max_clips: int = 5, min_score: float = 0.6) -> list[Candidate]:
+    """Pick up to max_clips non-overlapping candidates maximizing the sum of (score - min_score).
+
+    Weighted interval scheduling over sentence indices, so one long clip can't
+    block two strong ones. Clips scoring below min_score are only used when
+    nothing clears it (then the single best candidate is returned).
+    Returned in time order.
+    """
+    if not candidates:
+        return []
+    good = sorted((c for c in candidates if c.score > min_score), key=lambda c: (c.last, c.first))
+    if not good:
+        return [max(candidates, key=lambda c: (c.score, -c.start))]
+    from bisect import bisect_right
+
+    lasts = [c.last for c in good]
+    # prev[i]: number of candidates (in sorted order) that end before good[i] starts
+    prev = [bisect_right(lasts, c.first - 1) for c in good]
+    n = len(good)
+    # best[k][i]: best value using the first i candidates and at most k clips
+    best = [[0.0] * (n + 1) for _ in range(max_clips + 1)]
+    for k in range(1, max_clips + 1):
+        row, below = best[k], best[k - 1]
+        for i in range(1, n + 1):
+            c = good[i - 1]
+            row[i] = max(row[i - 1], below[prev[i - 1]] + (c.score - min_score))
+    chosen, k, i = [], max_clips, n
+    while k > 0 and i > 0:
+        c = good[i - 1]
+        if best[k][i] == best[k][i - 1]:
+            i -= 1
+        else:
             chosen.append(c)
+            i, k = prev[i - 1], k - 1
     return sorted(chosen, key=lambda c: c.start)

@@ -45,10 +45,15 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
 
         sentences = split_sentences(result["transcript"]["segments"])
         result["sentences"] = [_asdict(x) for x in sentences]
-        for n, c in enumerate(select_clips(candidate_clips(sentences), max_clips=max_clips), 1):
+        from clipmaker.highlights import rescore
+
+        candidates = candidate_clips(sentences)
+        parts = rescore(candidates, sentences)
+        for n, c in enumerate(select_clips(candidates, max_clips=max_clips), 1):
             result["clips"].append({
                 "id": f"clip_{n:02d}", "start": round(c.start, 3), "end": round(c.end, 3),
                 "duration": round(c.duration, 3), "text": c.text, "score": c.score,
+                "score_parts": parts[id(c)],
             })
     t0 = time.perf_counter()
     if render and result["clips"] and info.has_video:

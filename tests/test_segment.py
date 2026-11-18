@@ -1,4 +1,4 @@
-from clipmaker.segment import Sentence, candidate_clips, select_clips, split_sentences
+from clipmaker.segment import Candidate, Sentence, candidate_clips, select_clips, split_sentences
 
 
 def _seg(start, end, words):
@@ -39,7 +39,7 @@ def test_short_talk_gives_single_full_candidate():
 
 
 def test_select_clips_no_overlap_and_ordered():
-    chosen = select_clips(candidate_clips(_sentences(12)), max_clips=3)
+    chosen = select_clips(candidate_clips(_sentences(12)), max_clips=3, min_score=0.0)
     assert 1 <= len(chosen) <= 3
     for a, b in zip(chosen, chosen[1:]):
         assert a.last < b.first and a.start < b.start
@@ -51,3 +51,20 @@ def test_candidates_prefer_edges_in_pauses():
     cands = candidate_clips(sents)
     assert cands
     assert all(c.first != 2 and c.last != 1 for c in cands)
+
+
+def _c(first, last, score):
+    return Candidate(first * 10.0, last * 10.0 + 9, first, last, "", score)
+
+
+def test_select_prefers_two_good_over_one_long():
+    cands = [_c(0, 5, 0.95), _c(0, 2, 0.9), _c(3, 5, 0.9)]
+    chosen = select_clips(cands, max_clips=5)
+    assert [(c.first, c.last) for c in chosen] == [(0, 2), (3, 5)]
+
+
+def test_select_drops_weak_but_never_returns_empty():
+    cands = [_c(0, 2, 0.9), _c(3, 5, 0.5)]
+    assert [(c.first, c.last) for c in select_clips(cands)] == [(0, 2)]
+    assert [(c.first, c.last) for c in select_clips([_c(0, 2, 0.3), _c(3, 5, 0.4)])] == [(3, 5)]
+    assert len(select_clips(cands, max_clips=1)) == 1
