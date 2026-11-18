@@ -13,8 +13,8 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 ## M1: Core pipeline (CLI)
 - [x] Transcription with word timestamps (English and Hebrew), using a CPU-friendly model with runtime download and caching
 - [x] Sentence segmentation and candidate clips of 15–60 s on sentence boundaries
-- [ ] Cut clips accurately with re-encoding, not keyframe-snapped
-- [ ] Center-crop to 1080x1920, leaving vertical inputs uncropped
+- [x] Cut clips accurately with re-encoding, not keyframe-snapped
+- [x] Center-crop to 1080x1920, leaving vertical inputs uncropped
 - [ ] Burned-in captions, basic style
 - [ ] `clipmaker <input.mp4> --out <dir>` produces clips and a `clips.json` with timings, text and scores
 - [ ] Eval metrics: WER, boundary accuracy, output validity, speed

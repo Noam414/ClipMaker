@@ -1,7 +1,7 @@
 """End-to-end pipeline: input video -> clips + clips.json.
 
-Stages so far: probe, transcribe, sentence segmentation + clip selection.
-Later M1 items add cutting, reframing and captions.
+Stages so far: probe, transcribe, sentence segmentation + clip selection,
+frame-accurate cut with a centered 9:16 crop. Captions come next.
 """
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ CLIPS_SCHEMA_VERSION = 1
 
 
 def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | None = None,
-                 transcribe: bool = True, max_clips: int = 5) -> dict:
+                 transcribe: bool = True, max_clips: int = 5,
+                 render: bool = True) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -49,6 +50,18 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 "id": f"clip_{n:02d}", "start": round(c.start, 3), "end": round(c.end, 3),
                 "duration": round(c.duration, 3), "text": c.text, "score": c.score,
             })
+    t0 = time.perf_counter()
+    if render and result["clips"] and info.has_video:
+        from clipmaker.render import center_crop, render_clip
+
+        crop = center_crop(info.width, info.height)
+        for clip in result["clips"]:
+            name = f"{clip['id']}.mp4"
+            render_clip(input_path, out_dir / name, clip["start"], clip["end"], crop)
+            clip["file"] = name
+            clip["kept_ranges"] = [[clip["start"], clip["end"]]]
+            clip["crop_track"] = [[clip["start"], crop.x, crop.y, crop.w, crop.h]]
+    result["timings"]["render_seconds"] = round(time.perf_counter() - t0, 3)
     result["timings"]["total_seconds"] = round(time.perf_counter() - started, 3)
     (out_dir / "clips.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     return result

@@ -161,7 +161,7 @@ def contact_sheet(clip: Path, out_png: Path, tiles: int = 6) -> bool:
     fps = tiles / max(dur, 0.1)
     proc = subprocess.run(
         ["ffmpeg", "-v", "error", "-y", "-i", str(clip),
-         "-vf", f"fps={fps:.4f},scale=270:-2,tile={tiles}x1", "-frames:v", "1", str(out_png)],
+         "-vf", f"fps={fps:.4f},scale=270:-2,tile={tiles}x1:padding=8:color=white", "-frames:v", "1", str(out_png)],
         capture_output=True,
     )
     return proc.returncode == 0
