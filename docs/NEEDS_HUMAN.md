@@ -24,5 +24,10 @@ re-checks open items every night and moves resolved ones to the bottom.
 - **Steps:** record yourself (or use audio you own the rights to) reading 4–6 Hebrew sentences, about 20–40 s. Commit it as `tests/fixtures/audio/hebrew_owner.m4a` (under ~2 MB) with the exact text in `tests/fixtures/audio/hebrew_owner.txt`, one sentence per line. The agent will turn it into a fixture with ground truth.
 - **Agent check:** the two files exist on `main` or `claude/nightly`.
 
+### H-004: (Optional) Anthropic API key for LLM clip ranking
+- **Why:** ClipMaker can re-rank its top candidate clips with an LLM (`clipmaker/llm_scoring.py`). It is off by default and the heuristic ranking works without it. When on, clip transcripts are sent to Anthropic's API, which costs a little per video.
+- **Steps:** create a key at console.anthropic.com, then locally put `CLIPMAKER_LLM_SCORING=1` and `ANTHROPIC_API_KEY=...` in `.env`. For the nightly eval, add `ANTHROPIC_API_KEY` as an environment variable/secret of the cloud environment **and** allow `api.anthropic.com` in its network settings; tell the agent in `NEEDS_HUMAN.md` that it's there.
+- **Agent check:** `ANTHROPIC_API_KEY` is set in the environment.
+
 ## Resolved
 (none yet)

@@ -49,6 +49,10 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
 
         candidates = candidate_clips(sentences)
         parts = rescore(candidates, sentences)
+        from clipmaker.llm_scoring import blend_scores, scorer_from_env
+
+        for cid, llm in blend_scores(candidates, scorer_from_env()).items():
+            parts[cid]["llm"] = round(llm, 3)
         for n, c in enumerate(select_clips(candidates, max_clips=max_clips), 1):
             result["clips"].append({
                 "id": f"clip_{n:02d}", "start": round(c.start, 3), "end": round(c.end, 3),

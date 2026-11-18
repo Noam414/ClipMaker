@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-004: Optional LLM re-ranking via Anthropic Messages API, off by default (2026-11-18)
+- Decision: `clipmaker/llm_scoring.py` defines a `Scorer` interface and an `AnthropicScorer` (plain `urllib`, no SDK dependency). Enabled only by `CLIPMAKER_LLM_SCORING=1` plus `ANTHROPIC_API_KEY`; scores the top 12 heuristic candidates in one request and blends 50/50 with the heuristic score. Any error falls back to heuristics. Default model `claude-haiku-4-5` (cheap, fast), overridable with `CLIPMAKER_LLM_MODEL`.
+- Alternatives considered: a local LLM (too slow on 2 CPUs, weights on blocked hosts); OpenAI (either works; the interface allows adding it).
+- Why: keeps the default fully local with nothing phoning home, while leaving room for better ranking when the owner wants it (H-004).
+- How to reverse: leave the flag unset (default), or delete the module and its two-line call in `pipeline.py`.
+
 ## D-003: Highlight scoring by heuristics + clip selection by weighted interval scheduling (2026-11-18)
 - Decision: `clipmaker/highlights.py` scores each candidate from five 0..1 signals (opening hook 0.4, content density 0.2, length near 30 s 0.2, completeness 0.1, pacing 0.1), minus penalties for opening or closing on filler/outro. English + Hebrew word lists. `select_clips` then picks up to N non-overlapping clips maximizing the sum of `score - 0.6`, so one long clip can't block two strong ones and hook-less clips are dropped (but at least one clip is always returned). Clip edges must sit in a pause of at least 0.3 s.
 - Alternatives considered: greedy best-first selection (tested: one long middle clip blocked both hooks, hook-start rate 0.5); an ML/LLM ranker (planned as an optional, off-by-default scorer in M2; needs an API key).
