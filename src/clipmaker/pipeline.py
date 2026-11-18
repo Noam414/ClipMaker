@@ -1,6 +1,6 @@
 """End-to-end pipeline: input video -> clips + clips.json.
 
-Stages so far: probe, transcribe, sentence segmentation + clip selection,
+Stages so far: probe, scene-cut detection, transcribe, sentence segmentation + clip selection,
 dead-air removal, frame-accurate cut with a centered 9:16 crop and burned-in captions.
 """
 from __future__ import annotations
@@ -29,9 +29,16 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         "schema_version": CLIPS_SCHEMA_VERSION,
         "input": {"file": input_path.name, **asdict(info)},
         "transcript": None,
+        "scene_cuts": None,
         "clips": [],
         "timings": {},
     }
+    if info.has_video:
+        from clipmaker.scenes import detect_scene_cuts
+
+        t0 = time.perf_counter()
+        result["scene_cuts"] = detect_scene_cuts(input_path)
+        result["timings"]["scenes_seconds"] = round(time.perf_counter() - t0, 3)
     t0 = time.perf_counter()
     info_ok = info.has_audio and transcribe
     if info_ok:

@@ -28,7 +28,8 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 
 ## M3: Reframing
 - [ ] Face and speaker detection (CPU), with a smoothed camera path and no jitter
-- [ ] Scene-cut detection that resets the camera path at cuts
+- [x] Scene-cut detection (ffmpeg scdet), reported in `clips.json`
+- [ ] Reset the camera path at scene cuts (with face tracking)
 - [ ] Multiple speakers: follow the active speaker or use split screen
 - [ ] Eval: face-inside-crop rate, scene-cut precision and recall
 
