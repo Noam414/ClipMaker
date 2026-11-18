@@ -21,9 +21,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
       - name: Install ClipMaker
         run: pip install -e ".[dev]"
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: .cache/models
+          key: models-whisper-base-v1
       - name: Generate fixtures
         run: python3 scripts/make_test_videos.py
       - name: Tests
+        env:
+          CLIPMAKER_TEST_MODELS: "1"
         run: python3 -m pytest -q
       - name: Eval (smoke)
         run: python3 scripts/eval.py --no-history

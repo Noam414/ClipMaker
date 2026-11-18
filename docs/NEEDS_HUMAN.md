@@ -19,5 +19,10 @@ re-checks open items every night and moves resolved ones to the bottom.
 - **Why:** Deploying needs accounts and possibly payment. Until then everything runs locally, and inside the VM for tests.
 - **Steps:** none yet. When M5 is done, the agent will add a recommendation and exact steps here.
 
+### H-003: (Optional) A short Hebrew speech recording for the eval
+- **Why:** the Hebrew test video is voiced by espeak-ng, which pronounces Hebrew so poorly that no speech model can transcribe it (WER ~0.97), so Hebrew transcription quality can't be measured.
+- **Steps:** record yourself (or use audio you own the rights to) reading 4–6 Hebrew sentences, about 20–40 s. Commit it as `tests/fixtures/audio/hebrew_owner.m4a` (under ~2 MB) with the exact text in `tests/fixtures/audio/hebrew_owner.txt`, one sentence per line. The agent will turn it into a fixture with ground truth.
+- **Agent check:** the two files exist on `main` or `claude/nightly`.
+
 ## Resolved
 (none yet)

@@ -12,6 +12,14 @@ Template:
 - How to reverse:
 ```
 
+## D-002: Transcription: Silero VAD + Whisper base (sherpa-onnx, int8), proportional word timing (2026-11-18)
+- Decision: speech chunks from Silero VAD (min silence 0.3 s, max chunk 20 s), each chunk transcribed by Whisper **base** int8 through `sherpa-onnx` on CPU. Word timestamps are spread inside each VAD chunk in proportion to word length. Models are downloaded at runtime from the `k2-fsa/sherpa-onnx` GitHub release `asr-models` into `$CLIPMAKER_CACHE_DIR/models` (only the int8 files are kept). `CLIPMAKER_WHISPER_MODEL=tiny|base|small` overrides the size.
+- Licenses: sherpa-onnx Apache-2.0; Whisper weights MIT (OpenAI); Silero VAD MIT.
+- Alternatives considered: faster-whisper / whisper.cpp (weights on huggingface.co, blocked here); openai-whisper (PyTorch, heavy, weights host blocked); Vosk (weaker accuracy, no good Hebrew); Whisper small (tested on the Hebrew fixture: no better, 3x the download).
+- Why: runs on 2 CPUs at ~12x real time with base, ~7% WER on the English podcast fixture, no blocked hosts. sherpa-onnx's Whisper API doesn't return token timestamps, so VAD chunk edges give the anchor points; sentence ends usually coincide with a pause, which is what clip boundaries need.
+- Known limit: the Hebrew fixture is spoken by espeak-ng, whose Hebrew voice is barely intelligible, so its WER (~0.97) says more about the fixture than the model. See H-003.
+- How to reverse: `clipmaker/transcribe.py` is the only module that touches the ASR; replace `transcribe()` and keep the `Transcript` shape. If huggingface.co opens (H-001), faster-whisper with real word timestamps is the natural upgrade.
+
 ## D-001: Stack: Python + FastAPI + SQLAlchemy/SQLite + DB-backed job queue + server-rendered UI (2026-11-18)
 - Decision:
   - **Language:** Python 3.11+ for everything (pipeline, API, worker). One package, `clipmaker`, under `src/`.

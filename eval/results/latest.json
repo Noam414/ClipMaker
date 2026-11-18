@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-11-18T00:27:06+00:00",
-  "git_sha": "e3857ff",
+  "timestamp": "2026-11-18T00:33:34+00:00",
+  "git_sha": "6ab8d5c",
   "version": "0.1.0",
-  "eval_seconds": 0.2,
+  "eval_seconds": 10.5,
   "summary": {
     "fixtures": 4,
     "clip_count": 0,
     "errors": 0,
-    "wer": null,
+    "wer": 0.3849,
     "boundary_accuracy": null,
     "hook_start_rate": null,
     "dead_air_remaining_s": null,
@@ -15,12 +15,12 @@
     "scene_cut_precision": null,
     "scene_cut_recall": null,
     "valid_output_rate": null,
-    "seconds_per_input_minute": 0.11
+    "seconds_per_input_minute": 5.5025
   },
   "fixtures": {
     "podcast_landscape": {
       "metrics": {
-        "wer": null,
+        "wer": 0.0613,
         "boundary_accuracy": null,
         "hook_start_rate": null,
         "dead_air_remaining_s": null,
@@ -29,13 +29,13 @@
         "scene_cut_recall": null,
         "valid_output_rate": null,
         "clip_count": 0,
-        "seconds_per_input_minute": 0.04
+        "seconds_per_input_minute": 5.53
       },
       "clips": []
     },
     "portrait_short": {
       "metrics": {
-        "wer": null,
+        "wer": 0.1212,
         "boundary_accuracy": null,
         "hook_start_rate": null,
         "dead_air_remaining_s": null,
@@ -44,13 +44,13 @@
         "scene_cut_recall": null,
         "valid_output_rate": null,
         "clip_count": 0,
-        "seconds_per_input_minute": 0.2
+        "seconds_per_input_minute": 7.84
       },
       "clips": []
     },
     "hebrew_talk": {
       "metrics": {
-        "wer": null,
+        "wer": 0.9722,
         "boundary_accuracy": null,
         "hook_start_rate": null,
         "dead_air_remaining_s": null,
@@ -59,7 +59,7 @@
         "scene_cut_recall": null,
         "valid_output_rate": null,
         "clip_count": 0,
-        "seconds_per_input_minute": 0.13
+        "seconds_per_input_minute": 7.16
       },
       "clips": []
     },
@@ -74,7 +74,7 @@
         "scene_cut_recall": null,
         "valid_output_rate": null,
         "clip_count": 0,
-        "seconds_per_input_minute": 0.07
+        "seconds_per_input_minute": 1.48
       },
       "clips": []
     }

@@ -20,7 +20,7 @@ def test_probe_missing_file(tmp_path):
 
 
 def test_cli_writes_clips_json(tiny_video, tmp_path):
-    assert main([str(tiny_video), "--out", str(tmp_path / "out")]) == 0
+    assert main([str(tiny_video), "--out", str(tmp_path / "out"), "--no-transcribe"]) == 0
     data = json.loads((tmp_path / "out" / "clips.json").read_text())
     assert data["schema_version"] == 1
     assert data["input"]["width"] == 640

@@ -22,10 +22,17 @@ MIN_CLIP_S, MAX_CLIP_S = 5.0, 90.0
 
 
 # ----------------------------------------------------------------- text / WER
+_EN_NUMBERS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen "
+               "fourteen fifteen sixteen seventeen eighteen nineteen twenty").split()
+_DIGIT_WORDS = {str(i): w for i, w in enumerate(_EN_NUMBERS)}
+
+
 def normalize_words(text: str) -> list[str]:
+    """Lowercase, drop punctuation, spell out small English numbers ("5" -> "five")."""
     text = unicodedata.normalize("NFKC", text).lower()
     text = re.sub(r"[^\w\s']", " ", text)  # \w covers Hebrew letters
-    return [w.strip("'") for w in text.split() if w.strip("'")]
+    words = [w.strip("'") for w in text.split() if w.strip("'")]
+    return [_DIGIT_WORDS.get(w, w) for w in words]
 
 
 def wer(reference: str, hypothesis: str) -> float:

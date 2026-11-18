@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         t0 = time.perf_counter()
         error = None
         try:
-            result = run_pipeline(FIXTURES / gt["file"], out_dir)
+            result = run_pipeline(FIXTURES / gt["file"], out_dir, language=gt.get("language"))
         except Exception as exc:  # keep evaluating other fixtures
             result, error = None, f"{type(exc).__name__}: {exc}"
         elapsed = time.perf_counter() - t0

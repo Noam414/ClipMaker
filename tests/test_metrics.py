@@ -14,6 +14,7 @@ def test_wer_basic():
     assert m.wer("Hello, world!", "hello world") == 0
     assert m.wer("a b c d", "a x c") == pytest.approx(0.5)
     assert m.wer("שלום לכולם", "שלום לכולם.") == 0
+    assert m.wer("every five minutes", "every 5 minutes") == 0
 
 
 def test_boundary_and_hook():
