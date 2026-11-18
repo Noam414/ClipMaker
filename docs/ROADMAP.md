@@ -11,7 +11,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Eval harness skeleton (`scripts/eval.py`) that reads `tests/fixtures/videos/manifest.json` and writes `eval/results/latest.json`
 
 ## M1: Core pipeline (CLI)
-- [ ] Transcription with word timestamps (English and Hebrew), using a CPU-friendly model with runtime download and caching
+- [x] Transcription with word timestamps (English and Hebrew), using a CPU-friendly model with runtime download and caching
 - [ ] Sentence segmentation and candidate clips of 15–60 s on sentence boundaries
 - [ ] Cut clips accurately with re-encoding, not keyframe-snapped
 - [ ] Center-crop to 1080x1920, leaving vertical inputs uncropped
