@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipMaker</title>
+  <style>
+    :root { --bg: #0f1115; --fg: #f2f2f2; --accent: #ffb020; --muted: #8a8f98; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+    main { max-width: 720px; margin: 0 auto; padding: 48px 16px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; }
+    h1 span { color: var(--accent); }
+    p { color: var(--muted); line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Clip<span>Maker</span></h1>
+    <p>Turn long videos into short vertical clips. The upload flow arrives in milestone M5;
+       for now use the command line: <code>clipmaker input.mp4 --out clips/</code>.</p>
+    <p>Version {{ version }}</p>
+  </main>
+</body>
+</html>

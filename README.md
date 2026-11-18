@@ -23,4 +23,36 @@ Requires `ffmpeg` and `espeak-ng`.
 
 ## Running locally
 
-Not runnable yet. The agent will document local run instructions (Windows included) here.
+You need [ffmpeg](https://ffmpeg.org/download.html) on your PATH (Windows: `winget install Gyan.FFmpeg`).
+
+### Option A: Docker (any OS)
+
+```
+docker compose up --build
+```
+
+Then open http://localhost:8000.
+
+### Option B: Python 3.11+ (Windows PowerShell shown; same on macOS/Linux)
+
+```
+python -m venv .venv
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev]"
+copy .env.example .env           # optional; macOS/Linux: cp
+clipmaker serve                  # web app on http://127.0.0.1:8000
+clipmaker input.mp4 --out clips  # command-line pipeline (grows through milestone M1)
+```
+
+Settings live in environment variables or `.env` (see `.env.example`). The database
+defaults to a local SQLite file; set `DATABASE_URL` to use PostgreSQL.
+
+## Tests and eval
+
+```
+pip install -e ".[dev]"
+python -m pytest -q
+python scripts/eval.py            # needs the test videos above
+```
+
+The eval writes `eval/results/latest.json` and appends to `eval/results/history.jsonl`.

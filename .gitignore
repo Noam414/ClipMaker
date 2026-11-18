@@ -30,3 +30,6 @@ node_modules/
 dist/
 build/
 .DS_Store
+
+# Local app data (uploads, renders, SQLite)
+data/
