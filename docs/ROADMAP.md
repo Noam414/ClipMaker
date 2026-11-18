@@ -4,11 +4,11 @@ The nightly agent ticks items as they're completed and may split, reorder or add
 items, with a note in `DECISIONS.md` when the change is significant. Work top-down.
 
 ## M0: Foundation
-- [ ] Choose the stack (backend, frontend, job queue, database) and record it in `DECISIONS.md`
-- [ ] Project skeleton, dependency files, `.env.example`, a one-command local run that works on Windows
-- [ ] Test runner with a first passing test
-- [ ] CI that runs tests on pull requests. If pushing `.github/workflows/` is rejected, keep the file in `docs/ci/` and add an item to `NEEDS_HUMAN.md`.
-- [ ] Eval harness skeleton (`scripts/eval.py`) that reads `tests/fixtures/videos/manifest.json` and writes `eval/results/latest.json`
+- [x] Choose the stack (backend, frontend, job queue, database) and record it in `DECISIONS.md`
+- [x] Project skeleton, dependency files, `.env.example`, a one-command local run that works on Windows
+- [x] Test runner with a first passing test
+- [x] CI that runs tests on pull requests. If pushing `.github/workflows/` is rejected, keep the file in `docs/ci/` and add an item to `NEEDS_HUMAN.md`.
+- [x] Eval harness skeleton (`scripts/eval.py`) that reads `tests/fixtures/videos/manifest.json` and writes `eval/results/latest.json`
 
 ## M1: Core pipeline (CLI)
 - [ ] Transcription with word timestamps (English and Hebrew), using a CPU-friendly model with runtime download and caching
