@@ -16,8 +16,8 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Cut clips accurately with re-encoding, not keyframe-snapped
 - [x] Center-crop to 1080x1920, leaving vertical inputs uncropped
 - [x] Burned-in captions, basic style
-- [ ] `clipmaker <input.mp4> --out <dir>` produces clips and a `clips.json` with timings, text and scores
-- [ ] Eval metrics: WER, boundary accuracy, output validity, speed
+- [x] `clipmaker <input.mp4> --out <dir>` produces clips and a `clips.json` with timings, text and scores
+- [x] Eval metrics: WER, boundary accuracy, output validity, speed
 
 ## M2: Smart highlights
 - [ ] Highlight scoring heuristics: hook phrases, questions, numbers, emotion words, completeness, pacing

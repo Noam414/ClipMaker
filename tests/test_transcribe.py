@@ -38,3 +38,22 @@ def test_transcribe_portrait_fixture(manifest):
     assert wer(ref, tr.text) < 0.3
     words = tr.words
     assert words and all(0 <= w.start <= w.end <= gt["duration"] + 0.5 for w in words)
+
+
+@pytest.mark.skipif(not _models_available(), reason="whisper model not cached; set CLIPMAKER_TEST_MODELS=1 to download")
+def test_cli_end_to_end_portrait(manifest, tmp_path):
+    import json
+
+    from clipmaker.cli import main
+    from clipmaker.media import probe
+
+    from conftest import FIXTURES
+
+    out = tmp_path / "out"
+    assert main([str(FIXTURES / "portrait_short.mp4"), "--out", str(out), "--language", "en"]) == 0
+    data = json.loads((out / "clips.json").read_text(encoding="utf-8"))
+    assert len(data["clips"]) == 1
+    clip = data["clips"][0]
+    assert {"start", "end", "text", "score", "file"} <= clip.keys()
+    info = probe(out / clip["file"])
+    assert (info.width, info.height) == (1080, 1920) and info.has_audio

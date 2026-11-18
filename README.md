@@ -41,8 +41,15 @@ python -m venv .venv
 pip install -e ".[dev]"
 copy .env.example .env           # optional; macOS/Linux: cp
 clipmaker serve                  # web app on http://127.0.0.1:8000
-clipmaker input.mp4 --out clips  # command-line pipeline (grows through milestone M1)
+clipmaker input.mp4 --out clips  # make clips from a video
 ```
+
+`clipmaker input.mp4 --out clips` transcribes the video, picks up to 5 clips of
+15–60 s on sentence boundaries, and writes `clip_01.mp4`… (1080x1920, captions burned in)
+plus `clips.json` with timings, text and scores. Options: `--language en|he`
+(default: auto-detect), `--max-clips N`, `--no-captions`. The first run downloads
+the speech model (~200 MB download) into `.cache/models`; set `CLIPMAKER_WHISPER_MODEL=tiny`
+for a smaller, less accurate one.
 
 Settings live in environment variables or `.env` (see `.env.example`). The database
 defaults to a local SQLite file; set `DATABASE_URL` to use PostgreSQL.
