@@ -1,7 +1,7 @@
 """End-to-end pipeline: input video -> clips + clips.json.
 
 Stages so far: probe, transcribe, sentence segmentation + clip selection,
-frame-accurate cut with a centered 9:16 crop. Captions come next.
+frame-accurate cut with a centered 9:16 crop and burned-in captions.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ CLIPS_SCHEMA_VERSION = 1
 
 def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | None = None,
                  transcribe: bool = True, max_clips: int = 5,
-                 render: bool = True) -> dict:
+                 render: bool = True, captions: bool = True) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -52,12 +52,19 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             })
     t0 = time.perf_counter()
     if render and result["clips"] and info.has_video:
+        from clipmaker.captions import clip_words, group_words, write_ass
         from clipmaker.render import center_crop, render_clip
 
         crop = center_crop(info.width, info.height)
+        all_words = [w for seg in result["transcript"]["segments"] for w in seg["words"]]
         for clip in result["clips"]:
             name = f"{clip['id']}.mp4"
-            render_clip(input_path, out_dir / name, clip["start"], clip["end"], crop)
+            subs = None
+            if captions:
+                subs = write_ass(group_words(clip_words(all_words, clip["start"], clip["end"]), clip["start"]),
+                                 out_dir / f"{clip['id']}.ass")
+                clip["captions_file"] = subs.name
+            render_clip(input_path, out_dir / name, clip["start"], clip["end"], crop, subtitles=subs)
             clip["file"] = name
             clip["kept_ranges"] = [[clip["start"], clip["end"]]]
             clip["crop_track"] = [[clip["start"], crop.x, crop.y, crop.w, crop.h]]

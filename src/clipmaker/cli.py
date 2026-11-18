@@ -47,12 +47,15 @@ def _process(argv: list[str]) -> int:
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--language", default=None, help="speech language code, e.g. en or he (default: auto-detect)")
     parser.add_argument("--no-transcribe", action="store_true", help="skip speech-to-text")
+    parser.add_argument("--no-captions", action="store_true", help="don't burn in captions")
+    parser.add_argument("--max-clips", type=int, default=5)
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
     from clipmaker.pipeline import run_pipeline
 
-    result = run_pipeline(args.input, args.out, language=args.language, transcribe=not args.no_transcribe)
+    result = run_pipeline(args.input, args.out, language=args.language, transcribe=not args.no_transcribe,
+                          captions=not args.no_captions, max_clips=args.max_clips)
     print(json.dumps({"clips": len(result["clips"]), "out": str(args.out)}))
     return 0
 
