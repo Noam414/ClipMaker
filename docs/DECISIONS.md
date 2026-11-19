@@ -12,6 +12,20 @@ Template:
 - How to reverse:
 ```
 
+## D-006: Defer in-sentence filler removal until accurate word timestamps exist (2026-11-19)
+- Decision: the M2 item "filler words inside sentences" stays open; the nightly agent moves on to M3 reframing first.
+- Alternatives considered: cutting "um"/"so" at the proportional word times we have now (would clip real words, since times inside a VAD chunk are estimates); adding a second ASR model with token timestamps just for alignment (doubles transcription time).
+- Why: the proper fix is real word timestamps (faster-whisper / a CTC aligner), which mostly live on huggingface.co (H-001). Reframing had a large, measurable gap (face inside crop 0.65).
+- How to reverse: pick the item up next; it is still the first unchecked M2 line in the roadmap.
+
+## D-005: Speaker-following reframe with YuNet + skin-colour fallback, Gaussian camera path (2026-11-19)
+- Decision: `clipmaker/reframe.py` samples each clip at 4 fps at 480 px wide, detects faces with **YuNet** (`cv2.FaceDetectorYN`, model `face_detection_yunet_2023mar.onnx`, 230 KB, downloaded at runtime from opencv_zoo via media.githubusercontent.com and checked against a pinned sha256). If YuNet finds faces in fewer than 20% of a clip's samples, it falls back to the largest skin-coloured blob (YCrCb thresholds). The biggest face is followed. Camera path: gaps filled with the nearest detection, zero-lag Gaussian smoothing (sigma 0.5 s), computed **per shot** so it jumps at scene cuts instead of panning, then nudged so the subject box stays fully inside the crop. The path is simplified (Ramer-Douglas-Peucker, 2 px) and fed to ffmpeg's `crop` as a piecewise-linear expression of `t`; the crop runs before the dead-air trims. `--static-crop` turns it off.
+- Licenses: OpenCV Apache-2.0; YuNet model MIT (opencv_zoo).
+- Alternatives considered: Haar cascades (not shipped with OpenCV 5 wheels, weaker); MediaPipe (heavier, models via Google storage); OpenCV res10 SSD (older, Caffe); a per-frame `sendcmd` file instead of an expression (more moving parts).
+- Why: YuNet is tiny, fast on CPU and reachable from the allowlisted network. The skin fallback keeps the synthetic eval fixtures (flat "face" boxes) measurable and helps when no face is visible. Offline smoothing has no lag, unlike a real-time filter.
+- Known limits: one subject only (active speaker / split screen is a separate roadmap item); skin fallback can latch onto hands or arms in real footage when no face is ever detected.
+- How to reverse: `run_pipeline(reframe=False)` or `--static-crop` restores the centred crop; everything lives in `reframe.py` plus the `xy` argument of `render_clip`.
+
 ## D-004: Optional LLM re-ranking via Anthropic Messages API, off by default (2026-11-18)
 - Decision: `clipmaker/llm_scoring.py` defines a `Scorer` interface and an `AnthropicScorer` (plain `urllib`, no SDK dependency). Enabled only by `CLIPMAKER_LLM_SCORING=1` plus `ANTHROPIC_API_KEY`; scores the top 12 heuristic candidates in one request and blends 50/50 with the heuristic score. Any error falls back to heuristics. Default model `claude-haiku-4-5` (cheap, fast), overridable with `CLIPMAKER_LLM_MODEL`.
 - Alternatives considered: a local LLM (too slow on 2 CPUs, weights on blocked hosts); OpenAI (either works; the interface allows adding it).

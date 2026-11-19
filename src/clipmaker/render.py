@@ -30,8 +30,15 @@ def center_crop(src_w: int, src_h: int, out_w: int = OUT_W, out_h: int = OUT_H) 
     return Crop(0, (src_h - h) // 2, src_w, h)
 
 
-def build_filter(crop: Crop, subtitles: Path | None = None, fonts_dir: Path | None = None) -> str:
-    chain = [f"crop={crop.w}:{crop.h}:{crop.x}:{crop.y}", f"scale={OUT_W}:{OUT_H}:flags=lanczos", "setsar=1"]
+def crop_filter(crop: Crop, xy: tuple[str, str] | None = None) -> str:
+    """crop filter; `xy` are optional per-frame x/y expressions in clip-local time t."""
+    x, y = xy if xy else (crop.x, crop.y)
+    return f"crop={crop.w}:{crop.h}:{x}:{y}"
+
+
+def build_filter(crop: Crop, subtitles: Path | None = None, fonts_dir: Path | None = None,
+                 xy: tuple[str, str] | None = None, with_crop: bool = True) -> str:
+    chain = ([crop_filter(crop, xy)] if with_crop else []) + [f"scale={OUT_W}:{OUT_H}:flags=lanczos", "setsar=1"]
     if subtitles is not None:
         chain.append(f"subtitles=filename='{_escape(subtitles)}'" + (f":fontsdir='{_escape(fonts_dir)}'" if fonts_dir else ""))
     chain.append("format=yuv420p")
@@ -45,26 +52,29 @@ def _escape(path: Path) -> str:
 
 def render_clip(src: Path, dst: Path, start: float, end: float, crop: Crop,
                 subtitles: Path | None = None, fonts_dir: Path | None = None,
-                ranges: list[list[float]] | None = None) -> Path:
+                ranges: list[list[float]] | None = None, xy: tuple[str, str] | None = None) -> Path:
     """Cut [start, end) from src with re-encoding (not keyframe-snapped).
 
     With several source-time `ranges` inside [start, end], only those parts are
     kept and joined (dead-air removal). Subtitles must be timed on the output timeline.
+    `xy` crop expressions use t = source time - start (the crop runs before trimming).
     """
     ffmpeg = require_tool("ffmpeg")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    look = build_filter(crop, subtitles, fonts_dir)
     if ranges and len(ranges) > 1:
-        parts, labels = [], []
+        look = build_filter(crop, subtitles, fonts_dir, with_crop=False)
+        n = len(ranges)
+        parts = [f"[0:v]{crop_filter(crop, xy)},split={n}" + "".join(f"[s{i}]" for i in range(n))]
+        labels = []
         for i, (a, b) in enumerate(ranges):
             a, b = a - start, b - start
-            parts.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{i}]")
+            parts.append(f"[s{i}]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{i}]")
             parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
             labels.append(f"[v{i}][a{i}]")
         graph = ";".join(parts) + f";{''.join(labels)}concat=n={len(ranges)}:v=1:a=1[cv][ca];[cv]{look}[vout]"
         filter_args = ["-filter_complex", graph, "-map", "[vout]", "-map", "[ca]"]
     else:
-        filter_args = ["-vf", look]
+        filter_args = ["-vf", build_filter(crop, subtitles, fonts_dir, xy=xy)]
     cmd = [
         ffmpeg, "-v", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{max(end - start, 0.1):.3f}",

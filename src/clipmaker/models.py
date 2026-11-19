@@ -68,3 +68,23 @@ def whisper(name: str = "base") -> dict[str, Path]:
         for p in staging.iterdir():
             os.replace(p, folder / p.name)
     return files
+
+
+# YuNet face detector (MIT), from opencv_zoo. The repo stores it with git LFS, so the
+# file is served by media.githubusercontent.com; pinned to a commit-independent sha256.
+YUNET_URL = ("https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/"
+             "face_detection_yunet/face_detection_yunet_2023mar.onnx")
+YUNET_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+
+
+def yunet() -> Path:
+    import hashlib
+
+    path = models_dir() / "face_detection_yunet_2023mar.onnx"
+    if not path.is_file():
+        _download(YUNET_URL, path)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest != YUNET_SHA256:
+            path.unlink()
+            raise RuntimeError(f"YuNet checksum mismatch: {digest}")
+    return path

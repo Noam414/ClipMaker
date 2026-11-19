@@ -1,7 +1,7 @@
 """End-to-end pipeline: input video -> clips + clips.json.
 
 Stages so far: probe, scene-cut detection, transcribe, sentence segmentation + clip selection,
-dead-air removal, frame-accurate cut with a centered 9:16 crop and burned-in captions.
+dead-air removal, frame-accurate cut with a speaker-following 9:16 crop and burned-in captions.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ CLIPS_SCHEMA_VERSION = 1
 def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | None = None,
                  transcribe: bool = True, max_clips: int = 5,
                  render: bool = True, captions: bool = True,
-                 remove_dead_air: bool = True) -> dict:
+                 remove_dead_air: bool = True, reframe: bool = True) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -73,7 +73,11 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         from clipmaker.render import center_crop, render_clip
         from clipmaker.trim import kept_ranges, output_duration, remap_words
 
+        from clipmaker.reframe import FaceDetector, plan_reframe
+
         crop = center_crop(info.width, info.height)
+        detector = FaceDetector() if reframe else None
+        cuts = result["scene_cuts"] or []
         all_words = [w for seg in result["transcript"]["segments"] for w in seg["words"]]
         for clip in result["clips"]:
             name = f"{clip['id']}.mp4"
@@ -84,11 +88,16 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 words = remap_words(clip_words(all_words, clip["start"], clip["end"]), ranges)
                 subs = write_ass(group_words(words, 0.0), out_dir / f"{clip['id']}.ass")
                 clip["captions_file"] = subs.name
-            render_clip(input_path, out_dir / name, clip["start"], clip["end"], crop, subtitles=subs, ranges=ranges)
+            plan = plan_reframe(input_path, clip["start"], clip["end"], info.width, info.height, crop,
+                                cuts, detector) if reframe else None
+            render_clip(input_path, out_dir / name, clip["start"], clip["end"],
+                        plan.crop if plan else crop, subtitles=subs, ranges=ranges,
+                        xy=plan.filter_xy(clip["start"]) if plan else None)
             clip["output_duration"] = round(output_duration(ranges), 3)
             clip["file"] = name
             clip["kept_ranges"] = ranges
-            clip["crop_track"] = [[clip["start"], crop.x, crop.y, crop.w, crop.h]]
+            clip["crop_track"] = plan.track() if plan else [[clip["start"], crop.x, crop.y, crop.w, crop.h]]
+            clip["reframe"] = ("follow-" + plan.axis) if plan and plan.axis else "static"
     result["timings"]["render_seconds"] = round(time.perf_counter() - t0, 3)
     result["timings"]["total_seconds"] = round(time.perf_counter() - started, 3)
     (out_dir / "clips.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")

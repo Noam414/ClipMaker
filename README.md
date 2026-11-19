@@ -45,10 +45,10 @@ clipmaker input.mp4 --out clips  # make clips from a video
 ```
 
 `clipmaker input.mp4 --out clips` transcribes the video, picks up to 5 clips of
-15–60 s on sentence boundaries ranked by hook strength, shortens long pauses, and writes `clip_01.mp4`… (1080x1920, captions burned in)
+15–60 s on sentence boundaries ranked by hook strength, shortens long pauses, reframes to 9:16 following the speaker's face, and writes `clip_01.mp4`… (1080x1920, captions burned in)
 plus `clips.json` with timings, text and scores. Options: `--language en|he`
-(default: auto-detect), `--max-clips N`, `--no-captions`, `--keep-pauses` (don't shorten pauses over 1 s). The first run downloads
-the speech model (~200 MB download) into `.cache/models`; set `CLIPMAKER_WHISPER_MODEL=tiny`
+(default: auto-detect), `--max-clips N`, `--no-captions`, `--keep-pauses` (don't shorten pauses over 1 s), `--static-crop` (centre crop, no face following). The first run downloads
+the speech model (~200 MB download) and a small face detector (~230 KB) into `.cache/models`; set `CLIPMAKER_WHISPER_MODEL=tiny`
 for a smaller, less accurate one.
 
 Settings live in environment variables or `.env` (see `.env.example`). The database

@@ -23,15 +23,16 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Highlight scoring heuristics: hook phrases, questions, numbers, emotion words, completeness, pacing
 - [x] Optional LLM scoring behind an interface, off by default; the API key is a NEEDS_HUMAN item
 - [x] Dead-air removal: long pauses shortened, filler-only chunks ("um") dropped
-- [ ] Filler words inside sentences ("um", "so"): needs accurate word timestamps (forced alignment or a model with token times)
+- [ ] Filler words inside sentences ("um", "so"): needs accurate word timestamps (forced alignment or a model with token times). Deferred, see D-006
 - [x] Eval: share of clips starting on a hook, dead air remaining
 
 ## M3: Reframing
-- [ ] Face and speaker detection (CPU), with a smoothed camera path and no jitter
+- [x] Face and speaker detection (CPU), with a smoothed camera path and no jitter (YuNet + skin fallback, D-005)
 - [x] Scene-cut detection (ffmpeg scdet), reported in `clips.json`
-- [ ] Reset the camera path at scene cuts (with face tracking)
+- [x] Reset the camera path at scene cuts (with face tracking)
+- [ ] Eval fixture with a real-looking face, so YuNet itself is exercised (not only the skin fallback)
 - [ ] Multiple speakers: follow the active speaker or use split screen
-- [ ] Eval: face-inside-crop rate, scene-cut precision and recall
+- [x] Eval: face-inside-crop rate, scene-cut precision and recall
 
 ## M4: Captions and effects
 - [ ] Animated word-by-word captions (karaoke highlight), 3+ style presets

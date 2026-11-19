@@ -33,3 +33,4 @@ build/
 
 # Local app data (uploads, renders, SQLite)
 data/
+*.egg-info/
