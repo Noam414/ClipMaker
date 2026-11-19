@@ -30,7 +30,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Face and speaker detection (CPU), with a smoothed camera path and no jitter (YuNet + skin fallback, D-005)
 - [x] Scene-cut detection (ffmpeg scdet), reported in `clips.json`
 - [x] Reset the camera path at scene cuts (with face tracking)
-- [ ] Eval fixture with a real-looking face, so YuNet itself is exercised (not only the skin fallback)
+- [x] Eval fixture with a real-looking face, so YuNet itself is exercised (not only the skin fallback)
 - [ ] Multiple speakers: follow the active speaker or use split screen
 - [x] Eval: face-inside-crop rate, scene-cut precision and recall
 

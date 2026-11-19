@@ -138,13 +138,47 @@ def face_track(duration: float, cx_expr, cy_expr, step: float = 0.5):
     return pts
 
 
+def draw_face(path: Path, w: int, h: int) -> bool:
+    """Draw a simple cartoon face (hair, skin, eyes, brows, nose, mouth) that a real face
+    detector (YuNet) recognises. Returns False if OpenCV isn't installed."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return False
+    img = np.zeros((h, w, 3), np.uint8)
+    img[:] = (56, 42, 30)  # same as the background colour 0x1E2A38 (BGR)
+    cx, cy = w // 2, h // 2
+    cv2.ellipse(img, (cx, cy + h // 20), (int(w * 0.40), int(h * 0.44)), 0, 0, 360, (40, 50, 70), -1)
+    cv2.ellipse(img, (cx, cy + h // 12), (int(w * 0.36), int(h * 0.40)), 0, 0, 360, (150, 185, 230), -1)
+    for s in (-1, 1):
+        ex, ey = cx + s * int(w * 0.15), cy - int(h * 0.02)
+        cv2.ellipse(img, (ex, ey), (int(w * 0.075), int(h * 0.035)), 0, 0, 360, (250, 250, 250), -1)
+        cv2.circle(img, (ex, ey), int(w * 0.035), (60, 40, 30), -1)
+        cv2.circle(img, (ex, ey), int(w * 0.015), (10, 10, 10), -1)
+        cv2.line(img, (ex - int(w * 0.08), ey - int(h * 0.07)), (ex + int(w * 0.08), ey - int(h * 0.08)),
+                 (40, 50, 70), max(2, w // 40))
+    nose = np.array([[cx, cy + int(h * 0.02)], [cx - int(w * 0.05), cy + int(h * 0.17)],
+                     [cx + int(w * 0.05), cy + int(h * 0.17)]])
+    cv2.polylines(img, [nose], False, (110, 140, 190), max(2, w // 60))
+    cv2.ellipse(img, (cx, cy + int(h * 0.27)), (int(w * 0.12), int(h * 0.04)), 0, 0, 180, (90, 90, 180),
+                max(3, w // 30))
+    return bool(cv2.imwrite(str(path), img))
+
+
 def talking_head(name, out_dir, wav, duration, w, h, face_w, face_h, cx_ffmpeg, cy_ffmpeg, text_ok):
-    """A flat background with a skin-coloured 'face' box and a 'body' box that move.
+    """A flat background with a cartoon 'face' (a skin-coloured box if OpenCV is missing)
+    and a 'body' box that move.
 
     Uses overlay (evaluated per frame) rather than drawbox, whose position
     expressions are only evaluated once.
     """
     body_w, body_h = face_w * 2, h // 3
+    face_png = Path(tempfile.gettempdir()) / f"clipmaker_face_{face_w}x{face_h}.png"
+    if draw_face(face_png, face_w, face_h):
+        face_input = ["-loop", "1", "-framerate", str(FPS), "-t", str(duration), "-i", str(face_png)]
+    else:
+        face_input = ["-f", "lavfi", "-i", f"color=c=0xF2C9A0:s={face_w}x{face_h}:r={FPS}:d={duration}"]
     graph = (
         f"[0:v][2:v]overlay=x='({cx_ffmpeg})-{body_w}/2':y='({cy_ffmpeg})+{face_h}/2+20':shortest=1[b];"
         f"[b][1:v]overlay=x='({cx_ffmpeg})-{face_w}/2':y='({cy_ffmpeg})-{face_h}/2':shortest=1"
@@ -155,7 +189,7 @@ def talking_head(name, out_dir, wav, duration, w, h, face_w, face_h, cx_ffmpeg, 
     run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "lavfi", "-i", f"color=c=0x1E2A38:s={w}x{h}:r={FPS}:d={duration}",
-        "-f", "lavfi", "-i", f"color=c=0xF2C9A0:s={face_w}x{face_h}:r={FPS}:d={duration}",
+        *face_input,
         "-f", "lavfi", "-i", f"color=c=0x3B6EA5:s={body_w}x{body_h}:r={FPS}:d={duration}",
         "-i", str(wav),
         "-filter_complex", graph, "-map", "[v]", "-map", "3:a",

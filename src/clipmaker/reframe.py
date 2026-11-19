@@ -108,13 +108,18 @@ def skin_box(frame: np.ndarray, min_share: float = 0.005) -> Box | None:
     return Box(x + w / 2, y0 + h / 2, w, h)
 
 
-def detect_subjects(frames: list[np.ndarray], detector: FaceDetector | None = None) -> list[Box | None]:
-    """One subject box per frame (analysis pixels), or None where nothing was found."""
+def detect_subjects(frames: list[np.ndarray], detector: FaceDetector | None = None,
+                    info: dict | None = None) -> list[Box | None]:
+    """One subject box per frame (analysis pixels), or None where nothing was found.
+    `info["source"]` is set to "face" or "skin"."""
+    info = {} if info is None else info
     faces = [detector.detect(f) if detector else [] for f in frames]
     found = sum(1 for x in faces if x)
     if frames and found / len(frames) >= FACE_MIN_SHARE:
         # biggest face = closest speaker; active-speaker logic comes later
+        info["source"] = "face"
         return [max(x, key=lambda b: b.w * b.h) if x else None for x in faces]
+    info["source"] = "skin"
     return [skin_box(f) for f in frames]
 
 
@@ -206,6 +211,7 @@ class Reframe:
     crop: Crop                       # w/h fixed; x/y are the first keyframe
     keys: list[tuple[float, float]]  # (source time, offset on the moving axis)
     axis: str                        # "x", "y" or "" (static)
+    source: str = "none"             # what was followed: "face", "skin" or "none"
 
     def track(self) -> list[list[float]]:
         """clips.json crop_track: [[t, x, y, w, h], ...] in source time."""
@@ -231,7 +237,8 @@ def plan_reframe(src: Path, start: float, end: float, src_w: int, src_h: int, ba
     times, frames, scale = sample_frames(src, start, end, src_w, src_h)
     if not frames:
         return Reframe(base, [(start, float(base.x if axis == "x" else base.y))], axis)
-    boxes = detect_subjects(frames, detector)
+    info: dict = {}
+    boxes = detect_subjects(frames, detector, info)
     centers = [None if b is None else (b.cx if axis == "x" else b.cy) / scale for b in boxes]
     sizes = [None if b is None else (b.w if axis == "x" else b.h) / scale for b in boxes]
     crop_len, frame_len = (base.w, src_w) if axis == "x" else (base.h, src_h)
@@ -246,4 +253,5 @@ def plan_reframe(src: Path, start: float, end: float, src_w: int, src_h: int, ba
                 pts += [(c - 0.001, before[-1][1]), (c, after[0][1])]
     pts.sort()
     keys = simplify(pts, tol=2.0)
-    return Reframe(base, keys, axis)
+    found = any(b is not None for b in boxes)
+    return Reframe(base, keys, axis, info.get("source", "none") if found else "none")

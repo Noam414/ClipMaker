@@ -97,7 +97,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             clip["file"] = name
             clip["kept_ranges"] = ranges
             clip["crop_track"] = plan.track() if plan else [[clip["start"], crop.x, crop.y, crop.w, crop.h]]
-            clip["reframe"] = ("follow-" + plan.axis) if plan and plan.axis else "static"
+            clip["reframe"] = f"follow-{plan.axis}:{plan.source}" if plan and plan.axis else "static"
     result["timings"]["render_seconds"] = round(time.perf_counter() - t0, 3)
     result["timings"]["total_seconds"] = round(time.perf_counter() - started, 3)
     (out_dir / "clips.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")

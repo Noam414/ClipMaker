@@ -42,7 +42,9 @@ def test_detect_subjects_prefers_faces_and_largest():
 
 
 def test_detect_subjects_falls_back_to_skin_when_no_faces():
-    boxes = detect_subjects([_frame(cx=100)] * 5, _FakeDetector([[]] * 5))
+    info = {}
+    boxes = detect_subjects([_frame(cx=100)] * 5, _FakeDetector([[]] * 5), info)
+    assert info["source"] == "skin"
     assert all(b is not None and abs(b.cx - 100) <= 1 for b in boxes)
 
 
@@ -96,3 +98,27 @@ def test_reframe_track_and_filter():
     assert x.startswith("'") and y == "0"
     static = Reframe(Crop(0, 0, 1080, 1920), [(0.0, 0.0)], "")
     assert static.filter_xy(0) == ("0", "0")
+
+
+def test_yunet_detects_fixture_face(tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    cv2 = pytest.importorskip("cv2")
+    from clipmaker.reframe import FaceDetector
+
+    det = FaceDetector()
+    if not det.available:
+        pytest.skip("YuNet model not downloadable here")
+    spec = importlib.util.spec_from_file_location(
+        "mtv", Path(__file__).resolve().parents[1] / "scripts" / "make_test_videos.py")
+    mtv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mtv)
+    png = tmp_path / "face.png"
+    assert mtv.draw_face(png, 220, 280)
+    canvas = np.zeros((1080, 1920, 3), np.uint8)
+    canvas[:] = (56, 42, 30)
+    canvas[400:680, 800:1020] = cv2.imread(str(png))
+    faces = det.detect(cv2.resize(canvas, (480, 270)))
+    assert len(faces) == 1
+    assert abs(faces[0].cx * 4 - 910) < 20 and abs(faces[0].cy * 4 - 540) < 40
