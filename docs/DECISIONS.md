@@ -12,6 +12,13 @@ Template:
 - How to reverse:
 ```
 
+## D-008: Karaoke captions as one ASS event per word, auto base direction (2026-11-19)
+- Decision: styles `basic` (static), `bold` (default: white, spoken word yellow and 112%), `box` (white on one dark translucent box, spoken word green; ASS BorderStyle 4) and `pop` (uppercase, spoken word pink and 125%). Each caption line becomes one Dialogue event per spoken word, with the whole line visible and the active word wrapped in override tags. The style's Encoding is **-1** so libass picks the paragraph direction from the text. CLI `--caption-style`.
+- Alternatives considered: ASS `\k`/`\kf` karaoke tags (fill sweeps left to right, wrong for Hebrew); drawing captions ourselves with Pillow (much more code, loses libass shaping).
+- Why: libass already does shaping and bidi. Found while building this: with Encoding 1 the base direction is LTR, so once override tags split a Hebrew line into runs, the runs were drawn in LTR order. A pixel test now checks that the first spoken Hebrew word is drawn at the right end.
+- Known limits: word times inside a speech chunk are estimates (D-002), so the highlight can run slightly ahead or behind. Older libass builds without BorderStyle 4 draw `box` with per-word boxes.
+- How to reverse: `STYLES` in `captions.py`; `--caption-style basic` gives the old static look.
+
 ## D-007: Several people: frame the group if it fits, else follow the active speaker by mouth motion (2026-11-19)
 - Decision: faces from YuNet are grouped into tracks by position (greedy nearest match; a track must appear in 25% of samples). One track: follow it. Several tracks whose combined width fits in 90% of the crop: frame the group. Otherwise the active speaker is the track whose lower-face region changes most between samples (1 s moving average), with hysteresis (another track must be 1.5x more active for 0.75 s; the switch is back-dated to when that started). A speaker change is a hard cut for the virtual camera, like a scene cut. New fixture `two_speakers` (two cartoon faces 960 px apart, the speaking one's mouth flickers) with the active speaker as `face_track`.
 - Alternatives considered: audio-visual active-speaker models (TalkNet, Light-ASD: weights not reachable here, heavier); speaker diarization from audio alone (no link from voice to face without a model); split screen (kept as a separate option item).

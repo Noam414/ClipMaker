@@ -37,8 +37,8 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Eval: face-inside-crop rate, scene-cut precision and recall
 
 ## M4: Captions and effects
-- [ ] Animated word-by-word captions (karaoke highlight), 3+ style presets
-- [ ] Correct Hebrew right-to-left shaping, word order and punctuation
+- [x] Animated word-by-word captions (karaoke highlight), 3+ style presets (D-008)
+- [x] Correct Hebrew right-to-left shaping, word order and punctuation (pixel test in `test_captions.py`)
 - [ ] Keyword emphasis (color or scale) and optional emoji
 - [ ] Zoom punch-ins on emphasis, progress bar, hook title card in the first 3 s
 - [ ] Visual review of contact sheets in the nightly log

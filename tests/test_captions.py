@@ -37,3 +37,49 @@ def test_render_with_hebrew_captions(tiny_video, tmp_path):
     ass = write_ass(caps, tmp_path / "he.ass")
     out = render_clip(tiny_video, tmp_path / "c.mp4", 0.0, 2.0, center_crop(640, 360), subtitles=ass)
     assert probe(out).height == 1920
+
+
+def _highlight_side(tmp_path, text, style="bold"):
+    """Render a caption line whose first word is active; return the active word's
+    horizontal centre relative to the whole line (0 = left edge, 1 = right edge)."""
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    ws = [{"start": 0.0 + i * 0.5, "end": 0.45 + i * 0.5, "word": w} for i, w in enumerate(text.split())]
+    ass = write_ass(group_words(ws, 0.0, max_words=8, max_chars=60), tmp_path / "hl.ass", style=style)
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=1",
+         "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", "0.2", "-frames:v", "1",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+    img = np.frombuffer(proc.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+    r, g, b = img[..., 0], img[..., 1], img[..., 2]
+    text_cols = np.nonzero(((r > 200) & (g > 180)).any(axis=0))[0]
+    hl_cols = np.nonzero(((r > 200) & (g > 180) & (b < 90)).any(axis=0))[0]
+    assert len(hl_cols) and len(text_cols)
+    return (hl_cols.mean() - text_cols.min()) / (text_cols.max() - text_cols.min())
+
+
+def test_karaoke_first_word_is_left_in_english(tmp_path):
+    assert _highlight_side(tmp_path, "one two three four") < 0.3
+
+
+def test_karaoke_first_word_is_right_in_hebrew(tmp_path):
+    # RTL: the first spoken word must be drawn at the right end of the line
+    assert _highlight_side(tmp_path, "אחת שתיים שלוש ארבע") > 0.7
+
+
+def test_styles_write_karaoke_events(tmp_path):
+    from clipmaker.captions import STYLES
+
+    caps = group_words(_words("one two three"), offset=10.0)
+    for name in STYLES:
+        text = write_ass(caps, tmp_path / f"{name}.ass", style=name).read_text(encoding="utf-8")
+        events = [ln for ln in text.splitlines() if ln.startswith("Dialogue:")]
+        assert len(events) == (1 if name == "basic" else 3)
+        assert text.count(",-1\n") == 1  # auto base direction for RTL
+    assert "ONE" in (tmp_path / "pop.ass").read_text(encoding="utf-8")

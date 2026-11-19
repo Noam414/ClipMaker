@@ -18,7 +18,8 @@ CLIPS_SCHEMA_VERSION = 1
 def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | None = None,
                  transcribe: bool = True, max_clips: int = 5,
                  render: bool = True, captions: bool = True,
-                 remove_dead_air: bool = True, reframe: bool = True) -> dict:
+                 remove_dead_air: bool = True, reframe: bool = True,
+                 caption_style: str = "bold") -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -86,8 +87,9 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             subs = None
             if captions:
                 words = remap_words(clip_words(all_words, clip["start"], clip["end"]), ranges)
-                subs = write_ass(group_words(words, 0.0), out_dir / f"{clip['id']}.ass")
+                subs = write_ass(group_words(words, 0.0), out_dir / f"{clip['id']}.ass", style=caption_style)
                 clip["captions_file"] = subs.name
+                clip["caption_style"] = caption_style
             plan = plan_reframe(input_path, clip["start"], clip["end"], info.width, info.height, crop,
                                 cuts, detector) if reframe else None
             render_clip(input_path, out_dir / name, clip["start"], clip["end"],

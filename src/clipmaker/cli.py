@@ -50,6 +50,8 @@ def _process(argv: list[str]) -> int:
     parser.add_argument("--no-captions", action="store_true", help="don't burn in captions")
     parser.add_argument("--max-clips", type=int, default=5)
     parser.add_argument("--keep-pauses", action="store_true", help="don't shorten long pauses")
+    parser.add_argument("--caption-style", choices=["basic", "bold", "box", "pop"], default="bold",
+                        help="caption look; all but 'basic' highlight the spoken word")
     parser.add_argument("--static-crop", action="store_true", help="centre crop instead of following the speaker")
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
@@ -58,7 +60,8 @@ def _process(argv: list[str]) -> int:
 
     result = run_pipeline(args.input, args.out, language=args.language, transcribe=not args.no_transcribe,
                           captions=not args.no_captions, max_clips=args.max_clips,
-                          remove_dead_air=not args.keep_pauses, reframe=not args.static_crop)
+                          remove_dead_air=not args.keep_pauses, reframe=not args.static_crop,
+                          caption_style=args.caption_style)
     print(json.dumps({"clips": len(result["clips"]), "out": str(args.out)}))
     return 0
 
