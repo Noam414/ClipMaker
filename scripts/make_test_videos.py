@@ -68,6 +68,18 @@ HEBREW = [
     ("נסו את זה מחר ותראו את ההבדל.", 0.5, "story"),
 ]
 
+# (text, pause after, kind, espeak voice, speaker); A sits left, B right
+TWO_SPEAKERS = [
+    ("Here is the one question I ask every guest on this show.", 0.4, "hook", "en-us", "A"),
+    ("Go ahead, I am ready for it.", 0.4, "story", "en-gb", "B"),
+    ("What is the worst advice you ever followed, and why did you follow it?", 0.5, "hook", "en-us", "A"),
+    ("Easy. Someone told me to never ship anything until it was perfect.", 0.4, "story", "en-gb", "B"),
+    ("I waited two years, and by then the market had moved on.", 0.4, "story", "en-gb", "B"),
+    ("So what do you tell people now?", 0.4, "hook", "en-us", "A"),
+    ("Ship it small, ship it early, and listen to the people who use it.", 0.6, "hook", "en-gb", "B"),
+    ("That is the best answer we have had all year.", 0.5, "story", "en-us", "A"),
+]
+
 FPS = 30
 
 
@@ -106,9 +118,10 @@ def synth_speech(lines, voice: str, tmp: Path, speed: int = 165):
     params = None
     t = 0.0
     segments, dead_air = [], []
-    for i, (text, pause, kind) in enumerate(lines):
+    for i, (text, pause, kind, *rest) in enumerate(lines):
+        line_voice = rest[0] if rest else voice
         part = tmp / f"{voice}_{i}.wav"
-        run(["espeak-ng", "-v", voice, "-s", str(speed), "-w", str(part), text])
+        run(["espeak-ng", "-v", line_voice, "-s", str(speed), "-w", str(part), text])
         with wave.open(str(part)) as w:
             if params is None:
                 params = w.getparams()
@@ -116,6 +129,8 @@ def synth_speech(lines, voice: str, tmp: Path, speed: int = 165):
             dur = w.getnframes() / w.getframerate()
         frames += data
         segments.append({"start": round(t, 3), "end": round(t + dur, 3), "text": text, "kind": kind})
+        if len(rest) > 1:
+            segments[-1]["speaker"] = rest[1]
         t += dur
         n_sil = int(round(pause * params.framerate))
         frames += b"\x00" * (n_sil * params.sampwidth * params.nchannels)
@@ -197,6 +212,50 @@ def talking_head(name, out_dir, wav, duration, w, h, face_w, face_h, cx_ffmpeg, 
         "-c:a", "aac", "-b:a", "96k", "-shortest",
         str(out_dir / f"{name}.mp4"),
     ])
+
+
+def two_speakers(name, out_dir, wav, duration, segments, text_ok, w=1920, h=1080,
+                 face_w=220, face_h=280, xs=(480, 1440), cy=420):
+    """Two static cartoon faces; the speaking one 'moves its mouth' (an irregularly flickering
+    dark box over the mouth) while its lines play. Too far apart for one 9:16 crop."""
+    face_png = Path(tempfile.gettempdir()) / f"clipmaker_face_{face_w}x{face_h}.png"
+    if not draw_face(face_png, face_w, face_h):
+        raise SystemExit("two_speakers fixture needs OpenCV (pip install opencv-python-headless)")
+    body_w, body_h = face_w * 2, h // 3
+    talk = "gt(sin(2*PI*t*3.3)+sin(2*PI*t*5.1+1)\\,0)"
+    graph = "[0:v][2:v]overlay=x={bx0}:y={by}[b0];[b0][2:v]overlay=x={bx1}:y={by}[b1];" \
+            "[b1][1:v]overlay=x={fx0}:y={fy}[f0];[f0][1:v]overlay=x={fx1}:y={fy}".format(
+                bx0=xs[0] - body_w // 2, bx1=xs[1] - body_w // 2, by=cy + face_h // 2 + 20,
+                fx0=xs[0] - face_w // 2, fx1=xs[1] - face_w // 2, fy=cy - face_h // 2)
+    mouth_w, mouth_h = int(face_w * 0.3), int(face_h * 0.09)
+    for spk, x in zip("AB", xs):
+        spans = "+".join(f"between(t\\,{sg['start']}\\,{sg['end']})" for sg in segments if sg.get("speaker") == spk)
+        graph += (f",drawbox=x={x - mouth_w // 2}:y={cy + int(face_h * 0.24)}:w={mouth_w}:h={mouth_h}"
+                  f":color=0x3A1A1A:t=fill:enable='({spans})*{talk}'")
+    if text_ok:
+        graph += f",drawtext=text='{name} %{{pts\\:hms}}':x=20:y=20:fontsize={h // 30}:fontcolor=white"
+    graph += "[v]"
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", f"color=c=0x1E2A38:s={w}x{h}:r={FPS}:d={duration}",
+        "-loop", "1", "-framerate", str(FPS), "-t", str(duration), "-i", str(face_png),
+        "-f", "lavfi", "-i", f"color=c=0x3B6EA5:s={body_w}x{body_h}:r={FPS}:d={duration}",
+        "-i", str(wav),
+        "-filter_complex", graph, "-map", "[v]", "-map", "3:a",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "96k", "-shortest",
+        str(out_dir / f"{name}.mp4"),
+    ])
+    # ground truth: the active speaker's face, held through pauses
+    x_of = dict(zip("AB", xs))
+    track, cur, t = [], segments[0].get("speaker", "A"), 0.0
+    while t <= duration + 1e-9:
+        for sg in segments:
+            if sg["start"] <= t and sg.get("speaker"):
+                cur = sg["speaker"]
+        track.append([round(t, 3), x_of[cur], cy])
+        t += 0.5
+    return track
 
 
 def scene_cuts(out_dir, text_ok):
@@ -292,7 +351,20 @@ def main() -> None:
             "notes": "Captions are RTL Hebrew; check word order and punctuation placement visually.",
         }
 
-        # 4. Hard scene cuts, no speech.
+        # 4. Two speakers far apart: the crop should follow whoever is talking.
+        wav, dur, segs, dead = synth_speech(TWO_SPEAKERS, "en-us", tmp)
+        track = two_speakers("two_speakers", out, wav, dur, segs, text_ok)
+        manifest["fixtures"]["two_speakers"] = {
+            "file": "two_speakers.mp4", "language": "en", "duration": dur,
+            "width": 1920, "height": 1080, "speech_segments": segs, "dead_air": dead,
+            "scene_cuts": [],
+            "face_box_size": [220, 280],
+            "face_track": track,
+            "notes": "Two faces 960 px apart; face_track is the active speaker (segments carry 'speaker'). "
+                     "The 9:16 crop should switch to whoever is talking.",
+        }
+
+        # 5. Hard scene cuts, no speech.
         manifest["fixtures"]["scene_cuts"] = {"file": "scene_cuts.mp4", "language": None,
                                               **scene_cuts(out, text_ok),
                                               "notes": "Scene detection should find cuts at 6/12/18/24 s."}

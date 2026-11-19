@@ -3,7 +3,8 @@
 1. Sample low-resolution frames of the clip's source range (a few per second).
 2. Find the subject in each frame: YuNet faces (OpenCV, MIT model) first; if the
    detector finds no face anywhere in the clip, fall back to the largest skin-coloured
-   region (this also covers the synthetic test fixtures, whose "faces" are flat boxes).
+   region. With two or more people: frame them together if they fit in the crop,
+   otherwise follow the active speaker (most lower-face motion, with hysteresis).
 3. Build a camera path: fill gaps, smooth with a zero-lag Gaussian, separately for each
    shot (the path resets at scene cuts), clamp to the frame and make sure the subject
    box stays inside the crop.
@@ -108,19 +109,120 @@ def skin_box(frame: np.ndarray, min_share: float = 0.005) -> Box | None:
     return Box(x + w / 2, y0 + h / 2, w, h)
 
 
+def face_tracks(faces: list[list[Box]], min_share: float = 0.25) -> list[list[Box | None]]:
+    """Group per-frame faces into tracks by position (greedy nearest match).
+
+    Returns only tracks present in at least `min_share` of frames, biggest first."""
+    tracks: list[dict] = []
+    for i, frame_faces in enumerate(faces):
+        used: set[int] = set()
+        for b in sorted(frame_faces, key=lambda f: -f.w * f.h):
+            best, best_d = None, None
+            for k, tr in enumerate(tracks):
+                d = abs(tr["last"].cx - b.cx) + abs(tr["last"].cy - b.cy)
+                if k not in used and d < max(b.w, b.h) and (best_d is None or d < best_d):
+                    best, best_d = k, d
+            if best is None:
+                tracks.append({"boxes": {}, "last": b})
+                best = len(tracks) - 1
+            tracks[best]["boxes"][i] = b
+            tracks[best]["last"] = b
+            used.add(best)
+    n = len(faces)
+    keep = [t for t in tracks if n and len(t["boxes"]) / n >= min_share]
+    keep.sort(key=lambda t: -np.mean([b.w * b.h for b in t["boxes"].values()]))
+    return [[t["boxes"].get(i) for i in range(n)] for t in keep]
+
+
+def mouth_activity(frames: list[np.ndarray], track: list[Box | None]) -> np.ndarray:
+    """Mean absolute change of the lower-face region between consecutive samples."""
+    out = np.zeros(len(frames))
+    for i in range(1, len(frames)):
+        b = track[i] or track[i - 1]
+        if b is None:
+            continue
+        h, w = frames[i].shape[:2]
+        x0, x1 = int(max(b.cx - 0.3 * b.w, 0)), int(min(b.cx + 0.3 * b.w, w))
+        y0, y1 = int(max(b.cy + 0.1 * b.h, 0)), int(min(b.cy + 0.5 * b.h, h))
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            continue
+        a = frames[i][y0:y1, x0:x1].astype(np.int16).mean(axis=2)
+        p = frames[i - 1][y0:y1, x0:x1].astype(np.int16).mean(axis=2)
+        out[i] = float(np.abs(a - p).mean())
+    return out
+
+
+def pick_speaker(activity: list[np.ndarray], fps: float = SAMPLE_FPS, window_s: float = 1.0,
+                 margin: float = 1.5, hold_s: float = 0.75) -> list[int]:
+    """Index of the active track per sample, with hysteresis: switch only when another
+    track is clearly more active for `hold_s`; the switch is back-dated to when that began."""
+    n = len(activity[0])
+    k = max(1, int(round(window_s * fps)))
+    smooth = [np.convolve(a, np.ones(k) / k, mode="same") for a in activity]
+    cur = int(np.argmax([sm[: k + 1].sum() for sm in smooth]))
+    out = [cur] * n
+    run_start, run_who = None, None
+    hold = max(1, int(round(hold_s * fps)))
+    for i in range(n):
+        best = int(np.argmax([sm[i] for sm in smooth]))
+        if best != cur and smooth[best][i] > margin * smooth[cur][i] + 0.2:
+            if run_who != best:
+                run_start, run_who = i, best
+            if i - run_start + 1 >= hold:
+                cur = best
+                for j in range(run_start, i + 1):
+                    out[j] = cur
+                run_start, run_who = None, None
+        else:
+            run_start, run_who = None, None
+        out[i] = cur
+    return out
+
+
 def detect_subjects(frames: list[np.ndarray], detector: FaceDetector | None = None,
-                    info: dict | None = None) -> list[Box | None]:
+                    info: dict | None = None, crop_frac: float = 9 / 16 * 9 / 16) -> list[Box | None]:
     """One subject box per frame (analysis pixels), or None where nothing was found.
-    `info["source"]` is set to "face" or "skin"."""
+
+    Sets `info["source"]` ("face", "speakers", "group" or "skin") and, when following
+    the active speaker, `info["switches"]` (sample indexes where the speaker changes).
+    `crop_frac` is crop width / frame width: two faces that fit together are framed together.
+    """
     info = {} if info is None else info
+    info["switches"] = []
     faces = [detector.detect(f) if detector else [] for f in frames]
     found = sum(1 for x in faces if x)
-    if frames and found / len(frames) >= FACE_MIN_SHARE:
-        # biggest face = closest speaker; active-speaker logic comes later
+    if not frames or found / len(frames) < FACE_MIN_SHARE:
+        info["source"] = "skin"
+        return [skin_box(f) for f in frames]
+    tracks = face_tracks(faces)
+    if len(tracks) < 2:
         info["source"] = "face"
         return [max(x, key=lambda b: b.w * b.h) if x else None for x in faces]
-    info["source"] = "skin"
-    return [skin_box(f) for f in frames]
+    tracks = tracks[:4]
+    width = frames[0].shape[1]
+    span = [max(b.cx + b.w / 2 for b in x) - min(b.cx - b.w / 2 for b in x) if len(x) > 1 else 0 for x in faces]
+    if np.median(span) <= 0.9 * crop_frac * width:  # everyone fits: frame the group
+        info["source"] = "group"
+        out = []
+        for x in faces:
+            if not x:
+                out.append(None)
+                continue
+            lo, hi = min(b.cx - b.w / 2 for b in x), max(b.cx + b.w / 2 for b in x)
+            top, bot = min(b.cy - b.h / 2 for b in x), max(b.cy + b.h / 2 for b in x)
+            out.append(Box((lo + hi) / 2, (top + bot) / 2, hi - lo, bot - top))
+        return out
+    info["source"] = "speakers"
+    who = pick_speaker([mouth_activity(frames, t) for t in tracks])
+    info["switches"] = [i for i in range(1, len(who)) if who[i] != who[i - 1]]
+    out = []
+    for i, k in enumerate(who):
+        b = tracks[k][i]
+        if b is None:  # nearest sighting of that person
+            seen = [j for j, x in enumerate(tracks[k]) if x is not None]
+            b = tracks[k][min(seen, key=lambda j: abs(j - i))]
+        out.append(b)
+    return out
 
 
 def _gaussian_smooth(values: np.ndarray, sigma: float) -> np.ndarray:
@@ -211,7 +313,7 @@ class Reframe:
     crop: Crop                       # w/h fixed; x/y are the first keyframe
     keys: list[tuple[float, float]]  # (source time, offset on the moving axis)
     axis: str                        # "x", "y" or "" (static)
-    source: str = "none"             # what was followed: "face", "skin" or "none"
+    source: str = "none"             # "face", "speakers", "group", "skin" or "none"
 
     def track(self) -> list[list[float]]:
         """clips.json crop_track: [[t, x, y, w, h], ...] in source time."""
@@ -238,11 +340,15 @@ def plan_reframe(src: Path, start: float, end: float, src_w: int, src_h: int, ba
     if not frames:
         return Reframe(base, [(start, float(base.x if axis == "x" else base.y))], axis)
     info: dict = {}
-    boxes = detect_subjects(frames, detector, info)
+    frac = (base.w / src_w) if axis == "x" else (base.h / src_h)
+    boxes = detect_subjects(frames, detector, info, crop_frac=frac)
     centers = [None if b is None else (b.cx if axis == "x" else b.cy) / scale for b in boxes]
     sizes = [None if b is None else (b.w if axis == "x" else b.h) / scale for b in boxes]
     crop_len, frame_len = (base.w, src_w) if axis == "x" else (base.h, src_h)
-    offs = camera_path(times, centers, sizes, crop_len, frame_len, [c for c in cuts if start < c < end])
+    # a change of speaker is a hard cut for the virtual camera, like a scene cut
+    switch_ts = [(times[i - 1] + times[i]) / 2 for i in info.get("switches", [])]
+    cuts = sorted([c for c in cuts if start < c < end] + switch_ts)
+    offs = camera_path(times, centers, sizes, crop_len, frame_len, cuts)
     pts = [(start, offs[0])] + list(zip(times, offs)) + [(end, offs[-1])]
     # a cut is a jump: insert a point just before it so the linear segment doesn't pan
     for c in cuts:

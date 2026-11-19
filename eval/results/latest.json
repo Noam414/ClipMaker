@@ -1,21 +1,21 @@
 {
-  "timestamp": "2026-11-19T00:36:54+00:00",
-  "git_sha": "8d3fe26",
+  "timestamp": "2026-11-19T00:40:38+00:00",
+  "git_sha": "b993048",
   "version": "0.1.0",
-  "eval_seconds": 46.4,
+  "eval_seconds": 58.8,
   "summary": {
-    "fixtures": 4,
-    "clip_count": 4,
+    "fixtures": 5,
+    "clip_count": 5,
     "errors": 0,
-    "wer": 0.3849,
+    "wer": 0.337,
     "boundary_accuracy": 1.0,
-    "hook_start_rate": 0.6667,
+    "hook_start_rate": 0.5,
     "dead_air_remaining_s": 0.153,
     "face_inside_rate": 1.0,
     "scene_cut_precision": 1.0,
     "scene_cut_recall": 1.0,
     "valid_output_rate": 1.0,
-    "seconds_per_input_minute": 21.46
+    "seconds_per_input_minute": 21.656
   },
   "fixtures": {
     "podcast_landscape": {
@@ -29,7 +29,7 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 2,
-        "seconds_per_input_minute": 24.97
+        "seconds_per_input_minute": 24.95
       },
       "clips": [
         {
@@ -59,7 +59,7 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 1,
-        "seconds_per_input_minute": 27.29
+        "seconds_per_input_minute": 26.76
       },
       "clips": [
         {
@@ -82,7 +82,7 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 1,
-        "seconds_per_input_minute": 28.66
+        "seconds_per_input_minute": 28.47
       },
       "clips": [
         {
@@ -91,6 +91,29 @@
           "valid": true,
           "reason": null,
           "duration": 12.81
+        }
+      ]
+    },
+    "two_speakers": {
+      "metrics": {
+        "wer": 0.1932,
+        "boundary_accuracy": 1.0,
+        "hook_start_rate": 0.0,
+        "dead_air_remaining_s": 0.0,
+        "face_inside_rate": 1.0,
+        "scene_cut_precision": null,
+        "scene_cut_recall": null,
+        "valid_output_rate": 1.0,
+        "clip_count": 1,
+        "seconds_per_input_minute": 22.99
+      },
+      "clips": [
+        {
+          "start": 10.68,
+          "end": 29.46,
+          "valid": true,
+          "reason": null,
+          "duration": 18.8
         }
       ]
     },
@@ -105,7 +128,7 @@
         "scene_cut_recall": 1.0,
         "valid_output_rate": null,
         "clip_count": 0,
-        "seconds_per_input_minute": 4.92
+        "seconds_per_input_minute": 5.11
       },
       "clips": []
     }

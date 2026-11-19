@@ -12,6 +12,13 @@ Template:
 - How to reverse:
 ```
 
+## D-007: Several people: frame the group if it fits, else follow the active speaker by mouth motion (2026-11-19)
+- Decision: faces from YuNet are grouped into tracks by position (greedy nearest match; a track must appear in 25% of samples). One track: follow it. Several tracks whose combined width fits in 90% of the crop: frame the group. Otherwise the active speaker is the track whose lower-face region changes most between samples (1 s moving average), with hysteresis (another track must be 1.5x more active for 0.75 s; the switch is back-dated to when that started). A speaker change is a hard cut for the virtual camera, like a scene cut. New fixture `two_speakers` (two cartoon faces 960 px apart, the speaking one's mouth flickers) with the active speaker as `face_track`.
+- Alternatives considered: audio-visual active-speaker models (TalkNet, Light-ASD: weights not reachable here, heavier); speaker diarization from audio alone (no link from voice to face without a model); split screen (kept as a separate option item).
+- Why: pure OpenCV/numpy, adds almost nothing to processing time, and matches how real talking mouths behave. On the fixture the crop switches 0.1–0.3 s after the real speaker change.
+- Known limits: a listener who nods or laughs a lot can steal the camera; up to 4 tracks considered.
+- How to reverse: `detect_subjects()` in `reframe.py`; returning the biggest face per frame restores single-face following.
+
 ## D-006: Defer in-sentence filler removal until accurate word timestamps exist (2026-11-19)
 - Decision: the M2 item "filler words inside sentences" stays open; the nightly agent moves on to M3 reframing first.
 - Alternatives considered: cutting "um"/"so" at the proportional word times we have now (would clip real words, since times inside a VAD chunk are estimates); adding a second ASR model with token timestamps just for alignment (doubles transcription time).

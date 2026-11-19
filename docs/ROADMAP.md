@@ -31,7 +31,9 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Scene-cut detection (ffmpeg scdet), reported in `clips.json`
 - [x] Reset the camera path at scene cuts (with face tracking)
 - [x] Eval fixture with a real-looking face, so YuNet itself is exercised (not only the skin fallback)
-- [ ] Multiple speakers: follow the active speaker or use split screen
+- [x] Multiple speakers: follow the active speaker (lower-face motion), or frame the group when everyone fits (D-007)
+- [ ] Split-screen layout option for two speakers who don't fit one crop
+- [ ] Active speaker from audio too (voice/diarization), for faces that barely move
 - [x] Eval: face-inside-crop rate, scene-cut precision and recall
 
 ## M4: Captions and effects
