@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-009: Keyword emphasis and symbol "emoji" in captions (2026-11-20)
+- Decision: each caption line gets at most one keyword (`clipmaker/keywords.py`): numbers first, then strong/emotional words, then hook words (word lists shared with `highlights.py`), ties to the longer word. It stays in the style's `keyword_colour` (green in `bold`, yellow in the others) for the whole line; while spoken it takes the normal active-word look. On by default (`--no-keywords` turns it off). With `--emoji`, a keyword that maps to a concept (love, mistake, warning, star, check, energy, smile) pops a coloured symbol (❤ ✗ ⚠ ★ ✔ ⚡ ☺) above the line from the moment it is spoken until the line ends. Keywords are listed per clip in `clips.json` (`caption_keywords`).
+- Alternatives considered: full-colour emoji (libass can't draw colour-bitmap fonts like Noto Color Emoji; it would need PNG overlays, e.g. Twemoji, CC-BY 4.0, from GitHub releases, plus attribution) — split out as a later roadmap item; emphasising every matching word (too busy); an LLM picking keywords (needs H-004).
+- Why: the symbols come from DejaVu Sans (fonts-dejavu-core, already needed for Hebrew), so there is no new download or licence, and everything stays inside one ASS file.
+- How to reverse: `write_ass(..., keywords=False, emoji=False)`, or edit the word lists / `SYMBOLS` in `keywords.py`.
+
 ## D-008: Karaoke captions as one ASS event per word, auto base direction (2026-11-19)
 - Decision: styles `basic` (static), `bold` (default: white, spoken word yellow and 112%), `box` (white on one dark translucent box, spoken word green; ASS BorderStyle 4) and `pop` (uppercase, spoken word pink and 125%). Each caption line becomes one Dialogue event per spoken word, with the whole line visible and the active word wrapped in override tags. The style's Encoding is **-1** so libass picks the paragraph direction from the text. CLI `--caption-style`.
 - Alternatives considered: ASS `\k`/`\kf` karaoke tags (fill sweeps left to right, wrong for Hebrew); drawing captions ourselves with Pillow (much more code, loses libass shaping).

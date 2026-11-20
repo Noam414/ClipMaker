@@ -51,7 +51,8 @@ def _highlight_side(tmp_path, text, style="bold"):
     if not shutil.which("ffmpeg"):
         pytest.skip("ffmpeg not installed")
     ws = [{"start": 0.0 + i * 0.5, "end": 0.45 + i * 0.5, "word": w} for i, w in enumerate(text.split())]
-    ass = write_ass(group_words(ws, 0.0, max_words=8, max_chars=60), tmp_path / "hl.ass", style=style)
+    ass = write_ass(group_words(ws, 0.0, max_words=8, max_chars=60), tmp_path / "hl.ass", style=style,
+                    keywords=False)
     proc = subprocess.run(
         ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=1",
          "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", "0.2", "-frames:v", "1",
@@ -83,3 +84,59 @@ def test_styles_write_karaoke_events(tmp_path):
         assert len(events) == (1 if name == "basic" else 3)
         assert text.count(",-1\n") == 1  # auto base direction for RTL
     assert "ONE" in (tmp_path / "pop.ass").read_text(encoding="utf-8")
+
+
+def test_pick_keyword_prefers_numbers_then_strong_words():
+    from clipmaker.keywords import pick_keyword
+
+    assert pick_keyword("I failed 3 times".split()) == 2
+    assert pick_keyword("this was amazing".split()) == 2
+    assert pick_keyword("the secret is simple".split()) == 1
+    assert pick_keyword("just a normal line".split()) is None
+    assert pick_keyword("זו הטעות הכי גדולה".split()) == 1
+
+
+def test_keyword_coloured_and_emoji_event(tmp_path):
+    from clipmaker.captions import STYLES, caption_keywords
+
+    caps = group_words(_words("I love this. Normal words here"), offset=10.0)
+    assert caption_keywords(caps) == ["love"]
+    text = write_ass(caps, tmp_path / "k.ass", style="bold", emoji=True).read_text(encoding="utf-8")
+    kw = STYLES["bold"].keyword_colour
+    assert "{\\c" + kw + "}love{\\r}" in text
+    emoji = [ln for ln in text.splitlines() if ln.startswith("Dialogue: 1,")]
+    assert len(emoji) == 1 and "❤" in emoji[0] and "\\pos(" in emoji[0]
+    # emoji appears when the keyword is spoken (2nd word, 0.4 s in)
+    assert emoji[0].startswith("Dialogue: 1,0:00:00.40,")
+    off = write_ass(caps, tmp_path / "n.ass", style="bold", keywords=False).read_text(encoding="utf-8")
+    assert kw not in off and "Dialogue: 1," not in off
+
+
+def test_basic_style_keeps_keyword_colour(tmp_path):
+    from clipmaker.captions import STYLES
+
+    caps = group_words(_words("we tried 100 times"), offset=10.0)
+    text = write_ass(caps, tmp_path / "b.ass", style="basic").read_text(encoding="utf-8")
+    assert "{\\c" + STYLES["basic"].keyword_colour + "}100{\\r}" in text
+
+
+def test_emoji_glyph_is_drawn(tmp_path):
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    ws = [{"start": 0.0, "end": 0.4, "word": "pure"}, {"start": 0.4, "end": 0.9, "word": "love"}]
+    ass = write_ass(group_words(ws, 0.0), tmp_path / "e.ass", style="bold", emoji=True)
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=1",
+         "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", "0.8", "-frames:v", "1",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+    img = np.frombuffer(proc.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+    red = (img[..., 0] > 200) & (img[..., 1] < 120) & (img[..., 2] < 120)
+    rows = np.nonzero(red.any(axis=1))[0]
+    assert len(rows) > 40  # a sizeable red heart
+    assert rows.max() < 1920 - 420 - 60  # above the caption line

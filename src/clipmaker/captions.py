@@ -5,12 +5,17 @@ Styles (see STYLES): "basic" is static text; the others are animated word by wor
 and/or enlarged. Each word slot is its own Dialogue event with inline override
 tags, which keeps Hebrew right-to-left layout correct (libass + fribidi reorder
 the runs; ASS \\k karaoke would sweep left-to-right).
+
+Keyword emphasis (on by default): one word per line (see keywords.py) stays in the
+style's `keyword_colour`. With `emoji=True` a matching symbol pops in above the line
+when the keyword is spoken. D-009.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from clipmaker.keywords import pick_keyword, symbol_for
 from clipmaker.segment import SENTENCE_END
 
 FONT = "DejaVu Sans"  # has Latin + Hebrew glyphs; libass falls back if missing
@@ -42,15 +47,16 @@ class Style:
     active_colour: str | None = None
     active_scale: int = 100
     uppercase: bool = False
+    keyword_colour: str = "&H0000E5FF"  # yellow
 
 
 STYLES: dict[str, Style] = {
     "basic": Style(karaoke=False),
     # white with a thick outline, spoken word in yellow and slightly bigger
-    "bold": Style(active_colour="&H0000E5FF", active_scale=112),
+    "bold": Style(active_colour="&H0000E5FF", active_scale=112, keyword_colour="&H0050E050"),
     # white on a dark translucent box, spoken word in green
     "box": Style(font_size=72, border_style=4, outline_w=14, shadow=0, back="&H60000000",
-                 outline="&H60000000", active_colour="&H0060E070"),
+                 outline="&H60000000", active_colour="&H0060E070", keyword_colour="&H0000E5FF"),
     # uppercase, spoken word pops (bigger) in pink, no colour box
     "pop": Style(font_size=80, outline_w=5, shadow=0, uppercase=True, active_colour="&H00B469FF",
                  active_scale=125),
@@ -111,9 +117,26 @@ def _style_line(style: Style) -> str:
             f"{style.outline_w:g},{style.shadow:g},2,80,80,{style.margin_v},-1")
 
 
-def _karaoke_events(c: Caption, style: Style) -> list[tuple[float, float, str]]:
+def _words(c: Caption) -> list[tuple[float, float, str]]:
+    return c.words or [(c.start, c.end, w) for w in c.text.split()]
+
+
+def _render_words(shown: list[str], kw: int | None, style: Style, active: int | None = None,
+                  on: str = "") -> str:
+    parts = []
+    for j, w in enumerate(shown):
+        if j == active:
+            parts.append("{" + on + "}" + _escape(w) + "{\\r}")
+        elif j == kw:
+            parts.append("{\\c" + style.keyword_colour + "}" + _escape(w) + "{\\r}")
+        else:
+            parts.append(_escape(w))
+    return " ".join(parts)
+
+
+def _karaoke_events(c: Caption, style: Style, kw: int | None = None) -> list[tuple[float, float, str]]:
     """One (start, end, text) per spoken word; the active word carries override tags."""
-    words = c.words or [(c.start, c.end, w) for w in c.text.split()]
+    words = _words(c)
     shown = [w.upper() if style.uppercase else w for _, _, w in words]
     on = ""
     if style.active_colour:
@@ -124,15 +147,25 @@ def _karaoke_events(c: Caption, style: Style) -> list[tuple[float, float, str]]:
     for i, (ws, _, _) in enumerate(words):
         a = c.start if i == 0 else max(ws, events[-1][0])
         b = c.end if i == len(words) - 1 else max(words[i + 1][0], a)
-        parts = [("{" + on + "}" + _escape(w) + "{\\r}") if j == i else _escape(w) for j, w in enumerate(shown)]
         if events:
             events[-1] = (events[-1][0], a, events[-1][2])
-        events.append((a, b, " ".join(parts)))
+        events.append((a, b, _render_words(shown, kw, style, i, on)))
     return [e for e in events if e[1] > e[0]]
 
 
+def caption_keywords(captions: list[Caption]) -> list[str]:
+    """The emphasised word of each caption line, in order (for clips.json)."""
+    out = []
+    for c in captions:
+        ws = [w for _, _, w in _words(c)]
+        i = pick_keyword(ws)
+        if i is not None:
+            out.append(ws[i])
+    return out
+
+
 def write_ass(captions: list[Caption], path: Path, width: int = 1080, height: int = 1920,
-              style: str | Style = "basic") -> Path:
+              style: str | Style = "basic", keywords: bool = True, emoji: bool = False) -> Path:
     st = STYLES[style] if isinstance(style, str) else style
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -149,12 +182,24 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
+    emoji_y = height - st.margin_v - int(st.font_size * 1.35)
     for c in captions:
+        words = _words(c)
+        kw = pick_keyword([w for _, _, w in words]) if (keywords or emoji) else None
         if st.karaoke:
-            events = _karaoke_events(c, st)
+            events = _karaoke_events(c, st, kw if keywords else None)
         else:
-            events = [(c.start, c.end, _escape(c.text.upper() if st.uppercase else c.text))]
+            shown = [w.upper() if st.uppercase else w for _, _, w in words]
+            events = [(c.start, c.end, _render_words(shown, kw if keywords else None, st))]
         lines += [f"Dialogue: 0,{_ts(a)},{_ts(b)},Default,,0,0,0,,{t}" for a, b, t in events]
+        sym = symbol_for(words[kw][2]) if emoji and kw is not None else None
+        if sym and c.end > max(words[kw][0], c.start):
+            glyph, colour = sym
+            size = int(st.font_size * 1.9)
+            tags = (f"\\an2\\pos({width // 2},{emoji_y})\\fs{size}\\c{colour}\\3c&H000000&\\bord5\\shad0"
+                    f"\\fscx40\\fscy40\\t(0,160,\\fscx115\\fscy115)\\t(160,260,\\fscx100\\fscy100)")
+            lines.append(f"Dialogue: 1,{_ts(max(words[kw][0], c.start))},{_ts(c.end)},Default,,0,0,0,,"
+                         "{" + tags + "}" + glyph)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return path

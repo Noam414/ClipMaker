@@ -19,7 +19,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                  transcribe: bool = True, max_clips: int = 5,
                  render: bool = True, captions: bool = True,
                  remove_dead_air: bool = True, reframe: bool = True,
-                 caption_style: str = "bold") -> dict:
+                 caption_style: str = "bold", keywords: bool = True, emoji: bool = False) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -70,7 +70,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             })
     t0 = time.perf_counter()
     if render and result["clips"] and info.has_video:
-        from clipmaker.captions import clip_words, group_words, write_ass
+        from clipmaker.captions import caption_keywords, clip_words, group_words, write_ass
         from clipmaker.render import center_crop, render_clip
         from clipmaker.trim import kept_ranges, output_duration, remap_words
 
@@ -87,9 +87,12 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             subs = None
             if captions:
                 words = remap_words(clip_words(all_words, clip["start"], clip["end"]), ranges)
-                subs = write_ass(group_words(words, 0.0), out_dir / f"{clip['id']}.ass", style=caption_style)
+                caps = group_words(words, 0.0)
+                subs = write_ass(caps, out_dir / f"{clip['id']}.ass", style=caption_style,
+                                 keywords=keywords, emoji=emoji)
                 clip["captions_file"] = subs.name
                 clip["caption_style"] = caption_style
+                clip["caption_keywords"] = caption_keywords(caps) if (keywords or emoji) else []
             plan = plan_reframe(input_path, clip["start"], clip["end"], info.width, info.height, crop,
                                 cuts, detector) if reframe else None
             render_clip(input_path, out_dir / name, clip["start"], clip["end"],
