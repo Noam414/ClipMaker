@@ -9,6 +9,9 @@ the runs; ASS \\k karaoke would sweep left-to-right).
 Keyword emphasis (on by default): one word per line (see keywords.py) stays in the
 style's `keyword_colour`. With `emoji=True` a matching symbol pops in above the line
 when the keyword is spoken. D-009.
+
+Overlays (when the caller passes them): a hook title card at the top for the first
+seconds, and a progress bar along the bottom edge that fills over the clip. D-010.
 """
 from __future__ import annotations
 
@@ -134,6 +137,12 @@ def _render_words(shown: list[str], kw: int | None, style: Style, active: int | 
     return " ".join(parts)
 
 
+def _title_style_line(style: Style) -> str:
+    # opaque box (BorderStyle 3): the box takes OutlineColour, overridden per event
+    return (f"Style: Title,{FONT},{int(style.font_size * 0.8)},&H00FFFFFF,&H00FFFFFF,&H00202020,"
+            f"&H00000000,-1,0,0,0,100,100,0,0,3,18,0,8,80,80,0,-1")
+
+
 def _karaoke_events(c: Caption, style: Style, kw: int | None = None) -> list[tuple[float, float, str]]:
     """One (start, end, text) per spoken word; the active word carries override tags."""
     words = _words(c)
@@ -164,8 +173,35 @@ def caption_keywords(captions: list[Caption]) -> list[str]:
     return out
 
 
+TITLE_Y = 250  # top of the title card; clear of the platform UI at the very top
+PROGRESS_H = 14
+
+
+def _overlay_events(st: Style, width: int, height: int, title: str | None, title_seconds: float,
+                    progress_duration: float | None) -> list[str]:
+    out = []
+    accent = st.active_colour or st.keyword_colour
+    if title:
+        end = min(title_seconds, progress_duration) if progress_duration else title_seconds
+        size = int(st.font_size * 0.8)
+        tags = (f"\\an8\\pos({width // 2},{TITLE_Y})\\fs{size}\\b1\\q0\\c&HFFFFFF&\\3c{accent}\\4c&H000000&"
+                f"\\bord18\\shad0\\fad(120,250)")
+        text = _escape(title.upper() if st.uppercase else title)
+        # BorderStyle 3 (opaque box) from the second style, so the card has a solid background
+        out.append(f"Dialogue: 2,{_ts(0)},{_ts(end)},Title,,0,0,0,,{{{tags}}}{text}")
+    if progress_duration and progress_duration > 0:
+        ms = int(round(progress_duration * 1000))
+        tags = (f"\\an7\\pos(0,{height - PROGRESS_H})\\p1\\c{accent}\\bord0\\shad0"
+                f"\\fscx0\\t(0,{ms},\\fscx100)")
+        out.append(f"Dialogue: 2,{_ts(0)},{_ts(progress_duration)},Default,,0,0,0,,"
+                   f"{{{tags}}}m 0 0 l {width} 0 l {width} {PROGRESS_H} l 0 {PROGRESS_H}{{\\p0}}")
+    return out
+
+
 def write_ass(captions: list[Caption], path: Path, width: int = 1080, height: int = 1920,
-              style: str | Style = "basic", keywords: bool = True, emoji: bool = False) -> Path:
+              style: str | Style = "basic", keywords: bool = True, emoji: bool = False,
+              title: str | None = None, title_seconds: float = 3.0,
+              progress_duration: float | None = None) -> Path:
     st = STYLES[style] if isinstance(style, str) else style
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -177,6 +213,7 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 {_style_line(st)}
+{_title_style_line(st)}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -200,6 +237,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"\\fscx40\\fscy40\\t(0,160,\\fscx115\\fscy115)\\t(160,260,\\fscx100\\fscy100)")
             lines.append(f"Dialogue: 1,{_ts(max(words[kw][0], c.start))},{_ts(c.end)},Default,,0,0,0,,"
                          "{" + tags + "}" + glyph)
+    lines += _overlay_events(st, width, height, title, title_seconds, progress_duration)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return path

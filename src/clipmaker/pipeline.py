@@ -19,7 +19,8 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                  transcribe: bool = True, max_clips: int = 5,
                  render: bool = True, captions: bool = True,
                  remove_dead_air: bool = True, reframe: bool = True,
-                 caption_style: str = "bold", keywords: bool = True, emoji: bool = False) -> dict:
+                 caption_style: str = "bold", keywords: bool = True, emoji: bool = False,
+                 hook_title: bool = True, progress_bar: bool = True) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -71,6 +72,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
     t0 = time.perf_counter()
     if render and result["clips"] and info.has_video:
         from clipmaker.captions import caption_keywords, clip_words, group_words, write_ass
+        from clipmaker.keywords import hook_title as make_title
         from clipmaker.render import center_crop, render_clip
         from clipmaker.trim import kept_ranges, output_duration, remap_words
 
@@ -88,8 +90,12 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             if captions:
                 words = remap_words(clip_words(all_words, clip["start"], clip["end"]), ranges)
                 caps = group_words(words, 0.0)
+                title = make_title(clip["text"]) if hook_title else ""
                 subs = write_ass(caps, out_dir / f"{clip['id']}.ass", style=caption_style,
-                                 keywords=keywords, emoji=emoji)
+                                 keywords=keywords, emoji=emoji, title=title or None,
+                                 progress_duration=output_duration(ranges) if progress_bar else None)
+                clip["title"] = title
+                clip["progress_bar"] = progress_bar
                 clip["captions_file"] = subs.name
                 clip["caption_style"] = caption_style
                 clip["caption_keywords"] = caption_keywords(caps) if (keywords or emoji) else []

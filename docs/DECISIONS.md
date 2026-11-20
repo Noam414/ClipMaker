@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-010: Hook title card and progress bar drawn in the same ASS file (2026-11-20)
+- Decision: both overlays are ASS events next to the captions, so the renderer is unchanged. The title (`keywords.hook_title`) is the clip's first sentence without leading filler, at most 7 words (ellipsis if cut), shown for the first 3 s at the top (y=250) on an opaque card in the style's accent colour, with a short fade. The progress bar is a 14 px vector rectangle (`\p1`) on the bottom edge whose `\fscx` grows from 0 to 100 % over the clip's output duration. Both on by default; `--no-title`, `--no-progress-bar`. `clips.json` gets `title` and `progress_bar`.
+- Alternatives considered: ffmpeg `drawbox`/`drawtext` filters (one more filter chain to keep in sync with the crop/concat graph, and drawtext needs its own font/RTL handling); an LLM-written headline (better copy, but needs H-004; can replace `hook_title` later).
+- Why: libass already does Hebrew shaping and RTL, the timing is exact, and the whole look of a clip stays in one editable file — useful for the caption editor in M5.
+- How to reverse: `run_pipeline(..., hook_title=False, progress_bar=False)`, or drop `_overlay_events` in `captions.py`.
+
 ## D-009: Keyword emphasis and symbol "emoji" in captions (2026-11-20)
 - Decision: each caption line gets at most one keyword (`clipmaker/keywords.py`): numbers first, then strong/emotional words, then hook words (word lists shared with `highlights.py`), ties to the longer word. It stays in the style's `keyword_colour` (green in `bold`, yellow in the others) for the whole line; while spoken it takes the normal active-word look. On by default (`--no-keywords` turns it off). With `--emoji`, a keyword that maps to a concept (love, mistake, warning, star, check, energy, smile) pops a coloured symbol (❤ ✗ ⚠ ★ ✔ ⚡ ☺) above the line from the moment it is spoken until the line ends. Keywords are listed per clip in `clips.json` (`caption_keywords`).
 - Alternatives considered: full-colour emoji (libass can't draw colour-bitmap fonts like Noto Color Emoji; it would need PNG overlays, e.g. Twemoji, CC-BY 4.0, from GitHub releases, plus attribution) — split out as a later roadmap item; emphasising every matching word (too busy); an LLM picking keywords (needs H-004).

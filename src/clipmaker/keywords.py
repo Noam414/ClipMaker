@@ -68,3 +68,26 @@ def symbol_for(word: str) -> tuple[str, str] | None:
         if w in vocab:
             return sym, colour
     return None
+
+
+_LEADING_FILLERS = {"okay", "ok", "so", "um", "uh", "well", "alright", "anyway", "like", "and", "but",
+                    "אה", "אממ", "אז", "טוב", "בקיצור", "רגע", "ו"}
+
+
+def hook_title(text: str, max_words: int = 7) -> str:
+    """A short title for the first seconds of a clip: its opening sentence without
+    leading filler, cut to `max_words` words (with an ellipsis), first letter capitalised."""
+    first = re.split(r"(?<=[.?!…])\s+", text.strip(), maxsplit=1)[0]
+    words = first.split()
+    while words and _norm(words[0]).strip("'") in _LEADING_FILLERS:
+        words.pop(0)
+    if not words:
+        return ""
+    cut = len(words) > max_words
+    words = words[:max_words]
+    title = " ".join(words)
+    if cut:
+        title = title.rstrip(",;:-") + "…"
+    elif title[-1] == ".":
+        title = title[:-1]
+    return title[0].upper() + title[1:]

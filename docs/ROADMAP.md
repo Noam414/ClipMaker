@@ -41,7 +41,8 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Correct Hebrew right-to-left shaping, word order and punctuation (pixel test in `test_captions.py`)
 - [x] Keyword emphasis (color or scale) and optional emoji (symbol glyphs, D-009)
 - [ ] Full-colour emoji as PNG overlays (e.g. Twemoji, CC-BY, with attribution)
-- [ ] Zoom punch-ins on emphasis, progress bar, hook title card in the first 3 s
+- [x] Progress bar and hook title card in the first 3 s (D-010)
+- [ ] Zoom punch-ins on emphasis
 - [ ] Visual review of contact sheets in the nightly log
 
 ## M5: Web app

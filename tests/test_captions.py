@@ -82,7 +82,7 @@ def test_styles_write_karaoke_events(tmp_path):
         text = write_ass(caps, tmp_path / f"{name}.ass", style=name).read_text(encoding="utf-8")
         events = [ln for ln in text.splitlines() if ln.startswith("Dialogue:")]
         assert len(events) == (1 if name == "basic" else 3)
-        assert text.count(",-1\n") == 1  # auto base direction for RTL
+        assert text.count(",-1\n") == 2  # auto base direction for RTL (Default + Title)
     assert "ONE" in (tmp_path / "pop.ass").read_text(encoding="utf-8")
 
 
@@ -140,3 +140,47 @@ def test_emoji_glyph_is_drawn(tmp_path):
     rows = np.nonzero(red.any(axis=1))[0]
     assert len(rows) > 40  # a sizeable red heart
     assert rows.max() < 1920 - 420 - 60  # above the caption line
+
+
+def test_hook_title():
+    from clipmaker.keywords import hook_title
+
+    assert hook_title("okay Here is the thing nobody tells you about motivation. More.") == \
+        "Here is the thing nobody tells you…"
+    assert hook_title("so, why do we quit? Because.") == "Why do we quit?"
+    assert hook_title("Stop scrolling.") == "Stop scrolling"
+    assert hook_title("אז הסוד הוא פשוט. עוד") == "הסוד הוא פשוט"
+    assert hook_title("um") == ""
+
+
+def test_title_and_progress_bar_drawn(tmp_path):
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    ws = [{"start": 0.0, "end": 0.9, "word": "hello"}]
+    ass = write_ass(group_words(ws, 0.0), tmp_path / "t.ass", style="bold", title="Big title",
+                    title_seconds=1.0, progress_duration=2.0)
+    text = ass.read_text(encoding="utf-8")
+    assert "Style: Title," in text and "Big title" in text and "\\p1" in text
+
+    def frame(t):
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=2",
+             "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", str(t), "-frames:v", "1",
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+        return np.frombuffer(proc.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+
+    def bar_fill(img):
+        row = img[1920 - 7]
+        return ((row[:, 0] > 200) & (row[:, 1] > 180)).mean()  # yellow accent of "bold"
+
+    early, late = frame(0.5), frame(1.5)
+    assert 0.15 < bar_fill(early) < 0.35 and 0.65 < bar_fill(late) < 0.85
+    top_white = lambda img: ((img[200:450] > 230).all(axis=2)).sum()
+    assert top_white(early) > 500  # title text on its card
+    assert top_white(late) < 50    # title gone after title_seconds
