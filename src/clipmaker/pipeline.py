@@ -20,7 +20,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                  render: bool = True, captions: bool = True,
                  remove_dead_air: bool = True, reframe: bool = True,
                  caption_style: str = "bold", keywords: bool = True, emoji: bool = False,
-                 hook_title: bool = True, progress_bar: bool = True) -> dict:
+                 hook_title: bool = True, progress_bar: bool = True, zoom: bool = True) -> dict:
     started = time.perf_counter()
     input_path = Path(input_path)
     out_dir = Path(out_dir)
@@ -73,6 +73,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
     if render and result["clips"] and info.has_video:
         from clipmaker.captions import caption_keywords, clip_words, group_words, write_ass
         from clipmaker.keywords import hook_title as make_title
+        from clipmaker.keywords import punch_ins, zoom_expression
         from clipmaker.render import center_crop, render_clip
         from clipmaker.trim import kept_ranges, output_duration, remap_words
 
@@ -87,6 +88,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
             ranges = kept_ranges(result["transcript"]["segments"], clip["start"], clip["end"]) \
                 if remove_dead_air else [[clip["start"], clip["end"]]]
             subs = None
+            zoom_expr = None
             if captions:
                 words = remap_words(clip_words(all_words, clip["start"], clip["end"]), ranges)
                 caps = group_words(words, 0.0)
@@ -96,6 +98,9 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                                  progress_duration=output_duration(ranges) if progress_bar else None)
                 clip["title"] = title
                 clip["progress_bar"] = progress_bar
+                windows = punch_ins(caps) if zoom else []
+                zoom_expr = zoom_expression(windows)
+                clip["punch_ins"] = [list(w) for w in windows]
                 clip["captions_file"] = subs.name
                 clip["caption_style"] = caption_style
                 clip["caption_keywords"] = caption_keywords(caps) if (keywords or emoji) else []
@@ -103,7 +108,8 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                                 cuts, detector) if reframe else None
             render_clip(input_path, out_dir / name, clip["start"], clip["end"],
                         plan.crop if plan else crop, subtitles=subs, ranges=ranges,
-                        xy=plan.filter_xy(clip["start"]) if plan else None)
+                        xy=plan.filter_xy(clip["start"]) if plan else None,
+                        zoom=zoom_expr, fps=info.fps)
             clip["output_duration"] = round(output_duration(ranges), 3)
             clip["file"] = name
             clip["kept_ranges"] = ranges

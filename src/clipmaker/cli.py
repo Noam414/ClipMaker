@@ -56,6 +56,7 @@ def _process(argv: list[str]) -> int:
     parser.add_argument("--emoji", action="store_true", help="pop a matching symbol above key words")
     parser.add_argument("--no-title", action="store_true", help="no hook title card in the first 3 s")
     parser.add_argument("--no-progress-bar", action="store_true", help="no progress bar at the bottom")
+    parser.add_argument("--no-zoom", action="store_true", help="no zoom punch-ins on strong key words")
     parser.add_argument("--static-crop", action="store_true", help="centre crop instead of following the speaker")
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
@@ -67,7 +68,7 @@ def _process(argv: list[str]) -> int:
                           remove_dead_air=not args.keep_pauses, reframe=not args.static_crop,
                           caption_style=args.caption_style, keywords=not args.no_keywords,
                           emoji=args.emoji, hook_title=not args.no_title,
-                          progress_bar=not args.no_progress_bar)
+                          progress_bar=not args.no_progress_bar, zoom=not args.no_zoom)
     print(json.dumps({"clips": len(result["clips"]), "out": str(args.out)}))
     return 0
 

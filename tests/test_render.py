@@ -29,3 +29,36 @@ def test_render_clip_is_accurate_and_vertical(tiny_video, tmp_path):
     assert (info.width, info.height) == (1080, 1920)
     assert info.has_audio
     assert abs(info.duration - 2.0) < 0.1
+
+
+def _frame(path, t):
+    import subprocess
+
+    import numpy as np
+
+    proc = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", str(path), "-frames:v", "1",
+                           "-vf", "scale=270:480", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                          capture_output=True, check=True)
+    return np.frombuffer(proc.stdout, np.uint8).reshape(480, 270).astype(int)
+
+
+def test_zoom_punch_in_only_inside_window(tiny_video, tmp_path):
+    from clipmaker.keywords import zoom_expression
+
+    crop = center_crop(640, 360)
+    plain = render_clip(tiny_video, tmp_path / "p.mp4", 0.0, 3.0, crop, fps=25)
+    zoomed = render_clip(tiny_video, tmp_path / "z.mp4", 0.0, 3.0, crop,
+                         zoom=zoom_expression([(1.0, 2.0)], 1.3), fps=25)
+    info = probe(zoomed)
+    assert (info.width, info.height) == (1080, 1920) and abs(info.duration - 3.0) < 0.15
+    diff = lambda t: abs(_frame(plain, t) - _frame(zoomed, t)).mean()
+    assert diff(0.5) < 3 and diff(2.5) < 3
+    assert diff(1.5) > 10
+
+
+def test_zoom_with_dead_air_ranges(tiny_video, tmp_path):
+    from clipmaker.keywords import zoom_expression
+
+    out = render_clip(tiny_video, tmp_path / "r.mp4", 0.0, 3.0, center_crop(640, 360),
+                      ranges=[[0.0, 1.2], [1.6, 3.0]], zoom=zoom_expression([(0.5, 1.0)]), fps=25)
+    assert abs(probe(out).duration - 2.6) < 0.15

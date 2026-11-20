@@ -91,3 +91,30 @@ def hook_title(text: str, max_words: int = 7) -> str:
     elif title[-1] == ".":
         title = title[:-1]
     return title[0].upper() + title[1:]
+
+
+def punch_ins(captions, min_gap: float = 4.0, min_len: float = 0.4, max_len: float = 2.0,
+              min_class: int = 2) -> list[tuple[float, float]]:
+    """(start, end) windows, on the caption timeline, for a zoom punch-in: from a strong
+    keyword (number or strong word) until its caption line ends, spaced at least
+    `min_gap` seconds apart. `captions` are captions.Caption objects. D-011."""
+    out: list[tuple[float, float]] = []
+    for c in captions:
+        words = c.words or [(c.start, c.end, w) for w in c.text.split()]
+        i = pick_keyword([w for _, _, w in words])
+        if i is None or keyword_class(words[i][2]) < min_class:
+            continue
+        a = max(words[i][0], c.start)
+        b = min(c.end, a + max_len)
+        if b - a < min_len or (out and a - out[-1][0] < min_gap):
+            continue
+        out.append((round(a, 3), round(b, 3)))
+    return out
+
+
+def zoom_expression(windows: list[tuple[float, float]], scale: float = 1.12) -> str | None:
+    """ffmpeg expression of `it` (output seconds): `scale` inside the windows, else 1."""
+    if not windows:
+        return None
+    inside = "+".join(f"between(it,{a:.3f},{b:.3f})" for a, b in windows)
+    return f"if(gt({inside},0),{scale:g},1)"

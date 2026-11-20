@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-011: Zoom punch-ins as a step zoom with ffmpeg zoompan (2026-11-20)
+- Decision: when a caption line's keyword is a number or a strong word (not just a hook word), the frame jumps to 112 % from the moment the word is spoken until the line ends (0.4–2 s), at most one punch-in every 4 s (`keywords.punch_ins`). Rendered by `zoompan` with `d=1` at the source frame rate, after the 1080x1920 scale and before the subtitles, so captions, title and bar are not zoomed. The zoom is about the horizontal centre and 35 % of the height, where faces usually are. On by default, `--no-zoom` turns it off; `clips.json` lists `punch_ins` on the output timeline.
+- Alternatives considered: smooth eased zoom (zoompan pans in whole pixels, so slow zooms wobble; a hard jump-cut zoom is also the common short-form look); `scale` with `eval=frame` + `crop` (changing frame size mid-graph is fragile); zooming on the face box from the reframe plan (more precise, but the plan is in source time and the zoom in output time — a later refinement).
+- Known limits: at 112 % about 5 % of the frame width is lost on each side, and the face-inside-crop eval metric does not account for it yet (roadmap item). Variable-frame-rate sources could drift slightly because zoompan outputs a fixed rate.
+- How to reverse: `run_pipeline(..., zoom=False)`, or change `scale`/`min_gap` in `keywords.py` and `ZOOM_ANCHOR_Y` in `render.py`.
+
 ## D-010: Hook title card and progress bar drawn in the same ASS file (2026-11-20)
 - Decision: both overlays are ASS events next to the captions, so the renderer is unchanged. The title (`keywords.hook_title`) is the clip's first sentence without leading filler, at most 7 words (ellipsis if cut), shown for the first 3 s at the top (y=250) on an opaque card in the style's accent colour, with a short fade. The progress bar is a 14 px vector rectangle (`\p1`) on the bottom edge whose `\fscx` grows from 0 to 100 % over the clip's output duration. Both on by default; `--no-title`, `--no-progress-bar`. `clips.json` gets `title` and `progress_bar`.
 - Alternatives considered: ffmpeg `drawbox`/`drawtext` filters (one more filter chain to keep in sync with the crop/concat graph, and drawtext needs its own font/RTL handling); an LLM-written headline (better copy, but needs H-004; can replace `hook_title` later).

@@ -37,12 +37,27 @@ def crop_filter(crop: Crop, xy: tuple[str, str] | None = None) -> str:
 
 
 def build_filter(crop: Crop, subtitles: Path | None = None, fonts_dir: Path | None = None,
-                 xy: tuple[str, str] | None = None, with_crop: bool = True) -> str:
-    chain = ([crop_filter(crop, xy)] if with_crop else []) + [f"scale={OUT_W}:{OUT_H}:flags=lanczos", "setsar=1"]
+                 xy: tuple[str, str] | None = None, with_crop: bool = True,
+                 zoom: str | None = None, fps: float | None = None) -> str:
+    chain = ([crop_filter(crop, xy)] if with_crop else []) + [f"scale={OUT_W}:{OUT_H}:flags=lanczos"]
+    if zoom:
+        chain.append(zoom_filter(zoom, fps))
+    chain.append("setsar=1")
     if subtitles is not None:
         chain.append(f"subtitles=filename='{_escape(subtitles)}'" + (f":fontsdir='{_escape(fonts_dir)}'" if fonts_dir else ""))
     chain.append("format=yuv420p")
     return ",".join(chain)
+
+
+ZOOM_ANCHOR_Y = 0.35  # zoom towards the upper part of the frame, where faces usually are
+
+
+def zoom_filter(zoom: str, fps: float | None = None) -> str:
+    """Per-frame zoom (punch-ins) on the 1080x1920 frame. `zoom` is an expression of
+    `it`, the output time in seconds; the frame scales about (centre, 35 % height)."""
+    rate = f"{fps:.6g}" if fps and fps > 0 else "30"
+    return (f"zoompan=z='{zoom}':x='0.5*iw*(1-1/zoom)':y='{ZOOM_ANCHOR_Y}*ih*(1-1/zoom)'"
+            f":d=1:s={OUT_W}x{OUT_H}:fps={rate}")
 
 
 def _escape(path: Path) -> str:
@@ -52,17 +67,19 @@ def _escape(path: Path) -> str:
 
 def render_clip(src: Path, dst: Path, start: float, end: float, crop: Crop,
                 subtitles: Path | None = None, fonts_dir: Path | None = None,
-                ranges: list[list[float]] | None = None, xy: tuple[str, str] | None = None) -> Path:
+                ranges: list[list[float]] | None = None, xy: tuple[str, str] | None = None,
+                zoom: str | None = None, fps: float | None = None) -> Path:
     """Cut [start, end) from src with re-encoding (not keyframe-snapped).
 
     With several source-time `ranges` inside [start, end], only those parts are
     kept and joined (dead-air removal). Subtitles must be timed on the output timeline.
     `xy` crop expressions use t = source time - start (the crop runs before trimming).
+    `zoom` (punch-ins) is an expression of output time `it`; `fps` is the source frame rate.
     """
     ffmpeg = require_tool("ffmpeg")
     dst.parent.mkdir(parents=True, exist_ok=True)
     if ranges and len(ranges) > 1:
-        look = build_filter(crop, subtitles, fonts_dir, with_crop=False)
+        look = build_filter(crop, subtitles, fonts_dir, with_crop=False, zoom=zoom, fps=fps)
         n = len(ranges)
         parts = [f"[0:v]{crop_filter(crop, xy)},split={n}" + "".join(f"[s{i}]" for i in range(n))]
         labels = []
@@ -74,7 +91,7 @@ def render_clip(src: Path, dst: Path, start: float, end: float, crop: Crop,
         graph = ";".join(parts) + f";{''.join(labels)}concat=n={len(ranges)}:v=1:a=1[cv][ca];[cv]{look}[vout]"
         filter_args = ["-filter_complex", graph, "-map", "[vout]", "-map", "[ca]"]
     else:
-        filter_args = ["-vf", build_filter(crop, subtitles, fonts_dir, xy=xy)]
+        filter_args = ["-vf", build_filter(crop, subtitles, fonts_dir, xy=xy, zoom=zoom, fps=fps)]
     cmd = [
         ffmpeg, "-v", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{max(end - start, 0.1):.3f}",

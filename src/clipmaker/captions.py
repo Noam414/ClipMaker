@@ -184,7 +184,7 @@ def _overlay_events(st: Style, width: int, height: int, title: str | None, title
     if title:
         end = min(title_seconds, progress_duration) if progress_duration else title_seconds
         size = int(st.font_size * 0.8)
-        tags = (f"\\an8\\pos({width // 2},{TITLE_Y})\\fs{size}\\b1\\q0\\c&HFFFFFF&\\3c{accent}\\4c&H000000&"
+        tags = (f"\\an8\\pos({width // 2},{TITLE_Y})\\fs{size}\\b1\\q0\\c&H101010&\\3c{accent}\\4c&H000000&"
                 f"\\bord18\\shad0\\fad(120,250)")
         text = _escape(title.upper() if st.uppercase else title)
         # BorderStyle 3 (opaque box) from the second style, so the card has a solid background

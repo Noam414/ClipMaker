@@ -181,6 +181,20 @@ def test_title_and_progress_bar_drawn(tmp_path):
 
     early, late = frame(0.5), frame(1.5)
     assert 0.15 < bar_fill(early) < 0.35 and 0.65 < bar_fill(late) < 0.85
-    top_white = lambda img: ((img[200:450] > 230).all(axis=2)).sum()
-    assert top_white(early) > 500  # title text on its card
-    assert top_white(late) < 50    # title gone after title_seconds
+    card = lambda img: ((img[200:450, :, 0] > 200) & (img[200:450, :, 1] > 180) & (img[200:450, :, 2] < 90)).sum()
+    assert card(early) > 5000    # accent card behind the title
+    assert card(late) < 50       # title gone after title_seconds
+
+
+def test_punch_ins_spaced_and_strong_only():
+    from clipmaker.keywords import punch_ins, zoom_expression
+
+    caps = group_words(_words("I failed 3 times. The secret is simple. We tried 100 times. "
+                              "It was amazing for us."), offset=10.0)
+    wins = punch_ins(caps)
+    # "3" (number) at 0.8 s; "secret" is only a hook word; "100" (4.0 s) is too close to "3";
+    # "amazing" (strong word) at 5.6 s
+    assert [round(a, 1) for a, _ in wins] == [0.8, 5.6]
+    assert all(0.4 <= b - a <= 2.0 for a, b in wins)
+    assert zoom_expression([]) is None
+    assert zoom_expression(wins).startswith("if(gt(between(it,0.800,")
