@@ -7,7 +7,7 @@ re-checks open items every night and moves resolved ones to the bottom.
 
 ### H-001: (Optional) Allow Hugging Face in the cloud environment
 - **Why:** Most open speech and vision models are hosted on huggingface.co, which the default network allowlist blocks. The agent can work around this with models published on GitHub releases, but allowing Hugging Face gives it far more choice.
-- **Steps:** at claude.ai/code, open the environment selector, edit the environment used by the "ClipMaker nightly" scheduled task, set **Network access** to **Custom**, check **Also include default list of common package managers**, and add:
+- **Steps:** "ClipMaker nightly" is the name of the scheduled task, not of the environment. At claude.ai/code, open that scheduled task and note which environment it runs in (if none is named, it is your default environment, often called "Default"). Then open the environment selector, edit that environment, set **Network access** to **Custom**, check **Also include default list of common package managers**, and add:
   ```
   huggingface.co
   *.huggingface.co
