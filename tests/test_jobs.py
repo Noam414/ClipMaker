@@ -121,3 +121,22 @@ def test_project_gallery_page(tmp_path):
     index = client.get("/").text
     assert 'href="/projects/1"' in index and "1 clip" in index
     assert client.get("/projects/42").status_code == 404
+
+
+def test_download_single_and_zip(tmp_path):
+    import io
+    import zipfile
+
+    app = create_app(_settings(tmp_path), runner=fake_runner)
+    client = TestClient(app)
+    body = client.post("/api/projects", files={"file": ("Talk.mp4", b"x", "video/mp4")}).json()
+    pid = body["project_id"]
+    assert client.get(f"/projects/{pid}/clips.zip").status_code == 404  # nothing rendered yet
+    app.state.worker.run_once()
+    one = client.get(f"/media/{pid}/clips/clip_01.mp4?download=1")
+    assert one.status_code == 200 and 'filename="Talk_clip_01.mp4"' in one.headers["content-disposition"]
+    z = client.get(f"/projects/{pid}/clips.zip")
+    assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
+    assert zipfile.ZipFile(io.BytesIO(z.content)).namelist() == ["01_clip_01.mp4"]
+    page = client.get(f"/projects/{pid}").text
+    assert f"/projects/{pid}/clips.zip" in page and "?download=1" in page

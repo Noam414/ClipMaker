@@ -22,6 +22,7 @@
     .title { font-weight: 700; margin: 6px 0; }
     .parts { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
     .parts span { font-size: .75rem; background: var(--line); border-radius: 999px; padding: 2px 8px; color: var(--muted); }
+    .btn { display: inline-block; font-weight: 700; text-decoration: none; margin: 4px 0 8px; }
     details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
     details p { line-height: 1.5; margin: 8px 0 0; }
   </style>
@@ -32,7 +33,8 @@
     <h1>{{ project.name }}</h1>
     {% if job %}
       {% if job.status == "done" %}
-        <div class="muted">{{ clips|length }} clip{{ "" if clips|length == 1 else "s" }}, best first</div>
+        <div class="muted">{{ clips|length }} clip{{ "" if clips|length == 1 else "s" }}, best first
+          {% if clips %} · <a class="btn" href="/projects/{{ project.id }}/clips.zip">Download all (zip)</a>{% endif %}</div>
       {% elif job.status == "failed" %}
         <div class="err">Processing failed: {{ (job.error or "").splitlines()[0] }}</div>
       {% else %}
@@ -50,6 +52,7 @@
             <span class="muted">{{ c.key }} · {{ "%.1f"|format(c.data.get("output_duration", c.end - c.start)) }} s · {{ "%d:%02d"|format((c.start // 60)|int, (c.start % 60)|int) }}</span></div>
           {% if c.title %}<div class="title" dir="auto">{{ c.title }}</div>{% endif %}
           <div class="parts">{% for k, v in (c.data.get("score_parts") or {}).items() %}<span>{{ k }} {{ "%.0f"|format(v * 100) }}</span>{% endfor %}</div>
+          {% if c.file %}<a class="btn" href="/media/{{ project.id }}/{{ c.file }}?download=1">Download</a>{% endif %}
           <details><summary>Transcript</summary><p dir="auto">{{ c.text }}</p></details>
         </div>
       </article>

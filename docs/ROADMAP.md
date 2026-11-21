@@ -50,7 +50,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Upload a video, background job queue, live progress (polling, D-012)
 - [x] Clip gallery with score, transcript and preview player (`/projects/<id>`)
 - [ ] Edit caption text and trim clip start and end, then re-render
-- [ ] Download a single clip or all clips (zip)
+- [x] Download a single clip or all clips (zip)
 - [x] Database models for projects, jobs and clips, with migrations (Alembic, D-012)
 - [ ] End-to-end test of the web flow (headless browser) on fixtures
 

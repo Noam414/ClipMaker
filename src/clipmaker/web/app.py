@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -99,14 +100,45 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
                     "clips": [c.to_dict() | {"url": f"/media/{p.id}/{c.file}" if c.file else None}
                               for c in p.clips]}
 
+    def _download_name(project_id: int, suffix: str) -> str:
+        with Session() as s:
+            p = s.get(Project, project_id)
+            base = p.name if p else f"project-{project_id}"
+        return f"{base}_{suffix}"
+
     @app.get("/media/{project_id}/clips/{name}")
-    def media(project_id: int, name: str):
+    def media(project_id: int, name: str, download: bool = False):
         if not re.fullmatch(r"[\w\-]+\.mp4", name):
             raise HTTPException(404)
         path = project_dir(settings.data_dir, project_id) / "clips" / name
         if not path.is_file():
             raise HTTPException(404)
+        if download:
+            return FileResponse(path, media_type="video/mp4", filename=_download_name(project_id, name))
         return FileResponse(path, media_type="video/mp4")
+
+    @app.get("/projects/{project_id}/clips.zip")
+    def download_all(project_id: int):
+        with Session() as s:
+            p = s.get(Project, project_id)
+            if p is None:
+                raise HTTPException(404, "no such project")
+            job = p.jobs[-1] if p.jobs else None
+            files = [c.file for c in sorted(p.clips, key=lambda c: -c.score)
+                     if c.file and job is not None and c.job_id == job.id]
+        pdir = project_dir(settings.data_dir, project_id)
+        files = [f for f in files if (pdir / f).is_file()]
+        if not files:
+            raise HTTPException(404, "no clips to download")
+        out = pdir / "clips.zip"
+        tmp = out.with_suffix(".zip.part")
+        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_STORED) as zf:  # MP4 is already compressed
+            for rank, f in enumerate(files, 1):
+                zf.write(pdir / f, arcname=f"{rank:02d}_{Path(f).name}")
+            if (pdir / "clips" / "clips.json").is_file():
+                zf.write(pdir / "clips" / "clips.json", arcname="clips.json")
+        tmp.replace(out)
+        return FileResponse(out, media_type="application/zip", filename=_download_name(project_id, "clips.zip"))
 
     @app.get("/projects/{project_id}", response_class=HTMLResponse)
     def project_page(request: Request, project_id: int):
