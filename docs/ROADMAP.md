@@ -44,7 +44,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [x] Progress bar and hook title card in the first 3 s (D-010)
 - [x] Zoom punch-ins on emphasis (D-011)
 - [x] Eval: account for punch-in zoom in the face-inside-crop metric
-- [ ] Visual review of contact sheets in the nightly log
+- [x] Visual review of contact sheets in the nightly log (a fixed section in the log template)
 
 ## M5: Web app
 - [ ] Upload a video, background job queue, live progress
