@@ -17,7 +17,8 @@ re-checks open items every night and moves resolved ones to the bottom.
 
 ### H-002: Oracle Cloud free server for the live website (M7, D-013)
 - **Why:** the website must run on a server so visitors don't depend on their own computers. Oracle's "Always Free" tier gives one 2-core ARM server with 12 GB RAM and 200 GB disk at no cost; the agent can't sign up or deploy for you.
-- **Steps (now, ~20 min, optional until M7 is ready):**
+- **When:** wait until the agent says the deploy kit is ready (expected in about 1–1.5 weeks, after M5.5 and the M7 preparation). A server that sits idle for about a week may be reclaimed by Oracle.
+- **Steps (~20 min):**
   1. Sign up at cloud.oracle.com/free (a credit card is needed for identity verification; Always Free resources are not charged). Pick a home region close to your users; it can't be changed later.
   2. Compute → Instances → Create instance: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex** with **2 OCPU / 12 GB**. Upload or generate an SSH key and keep the private key. If it says "out of capacity", retry later or in another availability domain.
   3. Networking → the instance's subnet → Security list: add ingress rules for TCP **80** and **443** from 0.0.0.0/0.
