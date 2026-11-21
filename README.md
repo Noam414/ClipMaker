@@ -68,4 +68,7 @@ python -m pytest -q
 python scripts/eval.py            # needs the test videos above
 ```
 
+The browser end-to-end test (`tests/test_e2e_web.py`) is skipped unless Playwright is set up:
+`pip install -e ".[dev,e2e]"` and `python -m playwright install chromium`.
+
 The eval writes `eval/results/latest.json` and appends to `eval/results/history.jsonl`.

@@ -20,7 +20,9 @@ jobs:
       - name: Install system packages
         run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
       - name: Install ClipMaker
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,e2e]"
+      - name: Install headless Chromium (E2E web test)
+        run: python3 -m playwright install --with-deps chromium
       - name: Cache models
         uses: actions/cache@v4
         with:

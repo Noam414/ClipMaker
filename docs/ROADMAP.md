@@ -52,7 +52,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [ ] Edit caption text and trim clip start and end, then re-render
 - [x] Download a single clip or all clips (zip)
 - [x] Database models for projects, jobs and clips, with migrations (Alembic, D-012)
-- [ ] End-to-end test of the web flow (headless browser) on fixtures
+- [x] End-to-end test of the web flow (headless browser) on fixtures (`tests/test_e2e_web.py`, Playwright)
 
 ## M6: Polish
 - [ ] Aspect ratio options (9:16, 1:1, 16:9)
