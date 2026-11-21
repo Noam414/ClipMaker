@@ -15,9 +15,15 @@ re-checks open items every night and moves resolved ones to the bottom.
   ```
 - **Agent check:** `curl -sI https://huggingface.co` returns 200 or 3xx.
 
-### H-002: Hosting and database for the live website (later, M7)
-- **Why:** Deploying needs accounts and possibly payment. Until then everything runs locally, and inside the VM for tests.
-- **Steps:** none yet. When M5 is done, the agent will add a recommendation and exact steps here.
+### H-002: Oracle Cloud free server for the live website (M7, D-013)
+- **Why:** the website must run on a server so visitors don't depend on their own computers. Oracle's "Always Free" tier gives one 2-core ARM server with 12 GB RAM and 200 GB disk at no cost; the agent can't sign up or deploy for you.
+- **Steps (now, ~20 min, optional until M7 is ready):**
+  1. Sign up at cloud.oracle.com/free (a credit card is needed for identity verification; Always Free resources are not charged). Pick a home region close to your users; it can't be changed later.
+  2. Compute → Instances → Create instance: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex** with **2 OCPU / 12 GB**. Upload or generate an SSH key and keep the private key. If it says "out of capacity", retry later or in another availability domain.
+  3. Networking → the instance's subnet → Security list: add ingress rules for TCP **80** and **443** from 0.0.0.0/0.
+  4. Write here, under "Resolved", that the server exists and its public IP (never the SSH key).
+- **Later:** when the deploy kit (`deploy/oracle/`) is ready, the agent will add the one command to run on the server, and how to get a free HTTPS address.
+- **Agent check:** this section says the server exists.
 
 ### H-003: (Optional) A short Hebrew speech recording for the eval
 - **Why:** the Hebrew test video is voiced by espeak-ng, which pronounces Hebrew so poorly that no speech model can transcribe it (WER ~0.97), so Hebrew transcription quality can't be measured.
@@ -28,6 +34,11 @@ re-checks open items every night and moves resolved ones to the bottom.
 - **Why:** ClipMaker can re-rank its top candidate clips with an LLM (`clipmaker/llm_scoring.py`). It is off by default and the heuristic ranking works without it. When on, clip transcripts are sent to Anthropic's API, which costs a little per video.
 - **Steps:** create a key at console.anthropic.com, then locally put `CLIPMAKER_LLM_SCORING=1` and `ANTHROPIC_API_KEY=...` in `.env`. For the nightly eval, add `ANTHROPIC_API_KEY` as an environment variable/secret of the cloud environment **and** allow `api.anthropic.com` in its network settings; tell the agent in `NEEDS_HUMAN.md` that it's there.
 - **Agent check:** `ANTHROPIC_API_KEY` is set in the environment.
+
+### H-005: Which links should the site accept? (product and legal decision)
+- **Why:** direct media links (a URL that ends in .mp4/.m3u8, e.g. from your own storage or Dropbox/Drive direct links) are supported by default. YouTube, TikTok, Instagram etc. forbid downloading in their terms of service, and supporting them needs extra tools (yt-dlp) that break often. Your call, not the agent's.
+- **Steps:** write here one of: (a) direct links only; (b) also YouTube/other platforms for videos the uploader owns or has rights to, with a checkbox the user must tick; (c) something else.
+- **Agent check:** an answer is written here.
 
 ## Resolved
 (none yet)
