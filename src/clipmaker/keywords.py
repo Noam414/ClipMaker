@@ -112,7 +112,10 @@ def punch_ins(captions, min_gap: float = 4.0, min_len: float = 0.4, max_len: flo
     return out
 
 
-def zoom_expression(windows: list[tuple[float, float]], scale: float = 1.12) -> str | None:
+PUNCH_IN_SCALE = 1.12
+
+
+def zoom_expression(windows: list[tuple[float, float]], scale: float = PUNCH_IN_SCALE) -> str | None:
     """ffmpeg expression of `it` (output seconds): `scale` inside the windows, else 1."""
     if not windows:
         return None

@@ -43,7 +43,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 - [ ] Full-colour emoji as PNG overlays (e.g. Twemoji, CC-BY, with attribution)
 - [x] Progress bar and hook title card in the first 3 s (D-010)
 - [x] Zoom punch-ins on emphasis (D-011)
-- [ ] Eval: account for punch-in zoom in the face-inside-crop metric
+- [x] Eval: account for punch-in zoom in the face-inside-crop metric
 - [ ] Visual review of contact sheets in the nightly log
 
 ## M5: Web app

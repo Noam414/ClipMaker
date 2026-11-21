@@ -73,7 +73,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
     if render and result["clips"] and info.has_video:
         from clipmaker.captions import caption_keywords, clip_words, group_words, write_ass
         from clipmaker.keywords import hook_title as make_title
-        from clipmaker.keywords import punch_ins, zoom_expression
+        from clipmaker.keywords import PUNCH_IN_SCALE, punch_ins, zoom_expression
         from clipmaker.render import center_crop, render_clip
         from clipmaker.trim import kept_ranges, output_duration, remap_words
 
@@ -101,6 +101,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 windows = punch_ins(caps) if zoom else []
                 zoom_expr = zoom_expression(windows)
                 clip["punch_ins"] = [list(w) for w in windows]
+                clip["punch_in_scale"] = PUNCH_IN_SCALE
                 clip["captions_file"] = subs.name
                 clip["caption_style"] = caption_style
                 clip["caption_keywords"] = caption_keywords(caps) if (keywords or emoji) else []

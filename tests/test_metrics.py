@@ -47,3 +47,31 @@ def test_score_fixture_without_result(tmp_path):
     rep = m.score_fixture({"duration": 60}, None, tmp_path, 3.0)
     assert rep["metrics"]["seconds_per_input_minute"] == 3.0
     assert m.aggregate({"a": rep})["fixtures"] == 1
+
+
+def test_face_inside_rate_accounts_for_punch_in_zoom():
+    # Face near the left edge of a 608x1080 crop: visible normally, cut off at 1.12x zoom.
+    crop = [[0, 600, 0, 608, 1080]]
+    track = [[0.5, 600 + 115.0, 420.0], [2.5, 600 + 115.0, 420.0]]
+    clip = {"start": 0, "end": 3, "crop_track": crop, "punch_ins": [[2.0, 3.0]], "punch_in_scale": 1.12}
+    assert m.face_inside_rate([clip], track, [220, 260]) == 0.5
+    no_zoom = dict(clip, punch_ins=[])
+    assert m.face_inside_rate([no_zoom], track, [220, 260]) == 1.0
+
+
+def test_face_inside_rate_maps_punch_ins_through_kept_ranges():
+    crop = [[0, 600, 0, 608, 1080]]
+    # source 5.5 maps to output 2.5 (ranges keep 0-1 and 4-6); 2.0 was cut out -> skipped
+    track = [[2.0, 0.0, 420.0], [5.5, 600 + 115.0, 420.0]]
+    clip = {"start": 0, "end": 6, "crop_track": crop, "kept_ranges": [[0, 1], [4, 6]],
+            "punch_ins": [[2.2, 3.0]], "punch_in_scale": 1.12}
+    assert m.face_inside_rate([clip], track, [220, 260]) == 0.0
+    clip["punch_ins"] = [[0.0, 1.0]]
+    assert m.face_inside_rate([clip], track, [220, 260]) == 1.0
+
+
+def test_visible_crop_matches_zoom_anchor():
+    x, y, w, h = m._visible_crop([100, 0, 608, 1080], 1.12)
+    assert abs(w - 608 / 1.12) < 1e-6 and abs(h - 1080 / 1.12) < 1e-6
+    assert abs((x - 100) - 0.5 * (608 - w)) < 1e-6
+    assert abs(y - 0.35 * (1080 - h)) < 1e-6

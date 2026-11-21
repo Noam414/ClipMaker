@@ -7,6 +7,7 @@ clips.json fields the metrics read (all optional except clips[].start/end):
              file                         rendered clip, relative to out_dir
              kept_ranges: [[s, e], ...]   source ranges actually kept (after dead-air removal)
              crop_track: [[t, x, y, w, h], ...]  source-time crop window
+             punch_ins: [[s, e], ...]     output-time zoom windows (scaled by punch_in_scale)
 """
 from __future__ import annotations
 
@@ -111,9 +112,36 @@ def _interp_track(track: list[list[float]], t: float) -> list[float] | None:
     return track[-1][1:]
 
 
+def _visible_crop(crop: list[float], zoom: float) -> list[float]:
+    """Source window actually visible when the 1080x1920 output is zoomed by `zoom`
+    about (centre, ZOOM_ANCHOR_Y), as render.zoom_filter does."""
+    from clipmaker.render import ZOOM_ANCHOR_Y
+
+    x, y, w, h = crop
+    if zoom <= 1.0:
+        return [x, y, w, h]
+    k = 1 - 1 / zoom
+    return [x + 0.5 * w * k, y + ZOOM_ANCHOR_Y * h * k, w / zoom, h / zoom]
+
+
+def _zoom_at(clip: dict, t: float) -> float | None:
+    """Punch-in zoom at source time t, or None if t was cut out of the clip."""
+    from clipmaker.trim import map_time
+
+    ranges = clip.get("kept_ranges") or [[clip["start"], clip["end"]]]
+    ot = map_time(ranges, t)
+    if ot is None:
+        return None
+    for a, b in clip.get("punch_ins") or []:
+        if a <= ot <= b:
+            return float(clip.get("punch_in_scale", 1.12))
+    return 1.0
+
+
 def face_inside_rate(clips: list[dict], face_track: list[list[float]] | None,
                      face_box: list[float] | None) -> float | None:
-    """Share of face_track samples (inside clip ranges) whose face box sits fully inside the crop."""
+    """Share of face_track samples (inside the kept parts of each clip) whose face box sits
+    fully inside the visible frame: the crop, narrowed during zoom punch-ins."""
     if not clips or not face_track or not face_box:
         return None
     fw, fh = face_box
@@ -125,7 +153,10 @@ def face_inside_rate(clips: list[dict], face_track: list[list[float]] | None,
         for t, cx, cy in face_track:
             if not (c["start"] <= t <= c["end"]):
                 continue
-            x, y, w, h = _interp_track(crop, t)
+            zoom = _zoom_at(c, t)
+            if zoom is None:
+                continue
+            x, y, w, h = _visible_crop(_interp_track(crop, t), zoom)
             total += 1
             inside += (cx - fw / 2 >= x - 1 and cx + fw / 2 <= x + w + 1
                        and cy - fh / 2 >= y - 1 and cy + fh / 2 <= y + h + 1)
