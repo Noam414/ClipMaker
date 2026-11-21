@@ -35,10 +35,23 @@ re-checks open items every night and moves resolved ones to the bottom.
 - **Steps:** create a key at console.anthropic.com, then locally put `CLIPMAKER_LLM_SCORING=1` and `ANTHROPIC_API_KEY=...` in `.env`. For the nightly eval, add `ANTHROPIC_API_KEY` as an environment variable/secret of the cloud environment **and** allow `api.anthropic.com` in its network settings; tell the agent in `NEEDS_HUMAN.md` that it's there.
 - **Agent check:** `ANTHROPIC_API_KEY` is set in the environment.
 
-### H-005: Which links should the site accept? (product and legal decision)
-- **Why:** direct media links (a URL that ends in .mp4/.m3u8, e.g. from your own storage or Dropbox/Drive direct links) are supported by default. YouTube, TikTok, Instagram etc. forbid downloading in their terms of service, and supporting them needs extra tools (yt-dlp) that break often. Your call, not the agent's.
-- **Steps:** write here one of: (a) direct links only; (b) also YouTube/other platforms for videos the uploader owns or has rights to, with a checkbox the user must tick; (c) something else.
-- **Agent check:** an answer is written here.
+### H-006: (Optional) Let the nightly agent reach YouTube and Twitch
+- **Why:** youtube.com and twitch.tv are blocked in the agent's cloud environment, so it can only test platform links against a fake local site. Opening them lets it check real links nightly.
+- **Steps:** same place as H-001 (the scheduled task's environment → Network access → Custom, keep the default package-manager list), add:
+  ```
+  youtube.com
+  *.youtube.com
+  *.googlevideo.com
+  *.ytimg.com
+  twitch.tv
+  *.twitch.tv
+  *.ttvnw.net
+  *.jtvnw.net
+  ```
+- **Agent check:** `curl -sI https://www.youtube.com` returns 200 or 3xx.
 
 ## Resolved
-(none yet)
+
+### H-005: Which links should the site accept? — resolved 2026-11-21
+- **Owner's answer:** direct links **plus YouTube and Twitch** (D-014). Later: connecting YouTube/TikTok accounts to publish clips (M8) and automation for a top paid tier (M9).
+

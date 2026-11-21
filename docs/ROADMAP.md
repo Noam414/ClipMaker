@@ -5,6 +5,7 @@ items, with a note in `DECISIONS.md` when the change is significant. Work top-do
 
 **Priority (owner, 2026-11-21):** first M5.5 (link to clips in ≤ 5 minutes), then the M7 preparation
 items (ARM check, image, deploy kit, guardrails), then the remaining unchecked items top-down.
+M8 and M9 are later: start them only after M7 is deployed.
 
 ## M0: Foundation
 - [x] Choose the stack (backend, frontend, job queue, database) and record it in `DECISIONS.md`
@@ -63,7 +64,8 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [ ] URL import of direct media links (`http(s)://…/video.mp4`, HLS `.m3u8`): size and length limits, block private/internal addresses (SSRF)
 - [ ] Audio-only fetch from the link: for HLS/DASH sources with a separate audio track, download only the audio; for a single MP4 file, stream the audio with ffmpeg without saving the video
 - [ ] Fetch only the selected video ranges from the link (ffmpeg `-ss`/`-to` over HTTP range requests); eval test with a local HTTP server that counts bytes served
-- [ ] Platform links (YouTube etc.): only after the owner decides H-005
+- [ ] YouTube and Twitch links (owner decision H-005, D-014) through yt-dlp: audio-only format first, then only the selected sections (`--download-sections`); Twitch VODs and clips; a "I own or have the rights to this video" checkbox before processing
+- [ ] Platform-link fallbacks: clear error messages when a platform blocks the server ("upload the file instead"), retries, and a nightly-safe test with a local fake site (youtube.com/twitch.tv are blocked in the agent's VM)
 
 ## M5: Web app
 - [x] Upload a video, background job queue, live progress (polling, D-012)
@@ -87,3 +89,16 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [ ] Deploy kit in `deploy/oracle/`: production compose file, Caddy for free automatic HTTPS, a setup script for a fresh Ubuntu instance, backups of the database
 - [ ] Free-tier guardrails: max video length (60 min) and upload size, per-visitor daily limit, visible queue position, auto-delete files after 24 h, disk-usage cap
 - [ ] Step-by-step guide in H-002 so the owner deploys with one command, and a smoke test against the live site
+
+## M8: Publish to social accounts (later, after M7; D-014)
+- [ ] User accounts (builds on M6 "basic auth and multiple users")
+- [ ] Connect a YouTube account (Google OAuth, YouTube Data API) and upload a clip as a Short, with title, description and privacy setting
+- [ ] Connect a TikTok account (TikTok Content Posting API) and post a clip
+- [ ] Tokens stored encrypted, disconnect button, per-platform quota handling
+- [ ] NEEDS_HUMAN: developer apps, OAuth consent screen, and the platforms' app reviews/audits (until approved, posts may be private-only or limited to test users)
+
+## M9: Subscriptions and automation (later, after M8; D-014)
+- [ ] Plans and limits (free vs paid tiers: video length, clips per month, watermark)
+- [ ] Payments through a payment provider (NEEDS_HUMAN: business details, account)
+- [ ] Automation for the top tier: watch a YouTube channel or Twitch streamer, make clips from every new video/VOD automatically, and optionally auto-post the best ones on a schedule to the connected accounts
+- [ ] Capacity: paid tiers need paid servers; plan the move beyond the single free server
