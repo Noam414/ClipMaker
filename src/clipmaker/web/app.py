@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 
 from clipmaker import __version__
 from clipmaker.config import Settings, get_settings
@@ -107,8 +108,24 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
             raise HTTPException(404)
         return FileResponse(path, media_type="video/mp4")
 
+    @app.get("/projects/{project_id}", response_class=HTMLResponse)
+    def project_page(request: Request, project_id: int):
+        with Session() as s:
+            p = s.get(Project, project_id)
+            if p is None:
+                raise HTTPException(404, "no such project")
+            job = p.jobs[-1] if p.jobs else None
+            clips = sorted((c for c in p.clips if job is None or c.job_id == job.id),
+                           key=lambda c: -c.score)
+            return TEMPLATES.TemplateResponse(request, "project.html",
+                                              {"project": p, "job": job, "clips": clips})
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
-        return TEMPLATES.TemplateResponse(request, "index.html", {"version": __version__})
+        with Session() as s:
+            projects = s.scalars(select(Project).order_by(Project.id.desc()).limit(20)).all()
+            recent = [{"id": p.id, "name": p.name, "status": p.jobs[-1].status if p.jobs else "-",
+                       "clips": len(p.clips)} for p in projects]
+        return TEMPLATES.TemplateResponse(request, "index.html", {"version": __version__, "recent": recent})
 
     return app

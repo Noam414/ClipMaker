@@ -11,6 +11,7 @@
     main { max-width: 720px; margin: 0 auto; padding: 48px 16px; }
     h1 { margin: 0 0 8px; font-size: 2rem; }
     h1 span { color: var(--accent); }
+    h2 { margin: 32px 0 0; font-size: 1.1rem; }
     p { color: var(--muted); line-height: 1.5; }
     form { background: var(--panel); border: 2px dashed #2c313c; border-radius: 12px; padding: 24px; text-align: center; }
     form.drag { border-color: var(--accent); }
@@ -41,8 +42,14 @@
       <div id="label">Uploading…</div>
       <div class="bar"><div id="fill"></div></div>
       <div id="error" class="err"></div>
-      <ul id="clips"></ul>
     </section>
+    {% if recent %}
+    <h2>Recent videos</h2>
+    <ul id="recent">
+      {% for p in recent %}<li><a href="/projects/{{ p.id }}">{{ p.name }}</a>
+        <span class="score">{{ p.status }} · {{ p.clips }} clip{{ "" if p.clips == 1 else "s" }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
     <p>Version {{ version }}</p>
   </main>
   <script>
@@ -53,7 +60,6 @@
       $("label").textContent = label;
       $("fill").style.width = Math.round(frac * 100) + "%";
     }
-    function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
     async function poll(jobId, projectId) {
       const r = await fetch(`/api/jobs/${jobId}`);
       const job = await r.json();
@@ -65,16 +71,11 @@
         setTimeout(() => poll(jobId, projectId), 1000); return;
       }
       show("Done", 1);
-      const p = await (await fetch(`/api/projects/${projectId}`)).json();
-      $("clips").innerHTML = p.clips.length ? p.clips.map(c =>
-        `<li>${c.url ? `<a href="${c.url}" target="_blank">${esc(c.key)}</a>` : esc(c.key)}
-         <span class="score">score ${c.score.toFixed(2)} · ${c.duration.toFixed(1)} s</span><br>${esc(c.title || c.text)}</li>`
-      ).join("") : "<li>No clips found in this video.</li>";
-      $("go").disabled = false;
+      location.href = `/projects/${projectId}`;
     }
     function upload(file) {
       if (!file) return;
-      $("go").disabled = true; $("error").textContent = ""; $("clips").innerHTML = "";
+      $("go").disabled = true; $("error").textContent = "";
       const data = new FormData(); data.append("file", file);
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/projects");

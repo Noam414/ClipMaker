@@ -106,3 +106,18 @@ def test_background_worker_with_real_pipeline(tmp_path, tiny_video):
     assert job["status"] == "done", job
     clips_json = tmp_path / "data" / "projects" / str(body["project_id"]) / "clips" / "clips.json"
     assert json.loads(clips_json.read_text())["clips"] == []
+
+
+def test_project_gallery_page(tmp_path):
+    app = create_app(_settings(tmp_path), runner=fake_runner)
+    client = TestClient(app)
+    body = client.post("/api/projects", files={"file": ("שיחה.mp4", b"x", "video/mp4")}).json()
+    pending = client.get(f"/projects/{body['project_id']}")
+    assert pending.status_code == 200 and "Still working" in pending.text
+    app.state.worker.run_once()
+    page = client.get(f"/projects/{body['project_id']}").text
+    assert "שיחה" in page and "<video" in page and "/media/1/clips/clip_01.mp4" in page
+    assert ">80<" in page and "Hook text." in page
+    index = client.get("/").text
+    assert 'href="/projects/1"' in index and "1 clip" in index
+    assert client.get("/projects/42").status_code == 404
