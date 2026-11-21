@@ -25,6 +25,7 @@ class Settings:
     cache_dir: Path
     host: str
     port: int
+    worker: bool = True  # run the background job worker inside the web process
 
 
 def get_settings() -> Settings:
@@ -36,4 +37,5 @@ def get_settings() -> Settings:
         cache_dir=Path(os.environ.get("CLIPMAKER_CACHE_DIR", "./.cache")).expanduser(),
         host=os.environ.get("CLIPMAKER_HOST", "127.0.0.1"),
         port=int(os.environ.get("CLIPMAKER_PORT", "8000")),
+        worker=os.environ.get("CLIPMAKER_WORKER", "1").strip().lower() not in ("0", "false", "no", "off"),
     )

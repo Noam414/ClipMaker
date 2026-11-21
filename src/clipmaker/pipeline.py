@@ -9,6 +9,7 @@ import json
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Callable
 
 from clipmaker.media import probe
 
@@ -20,8 +21,12 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                  render: bool = True, captions: bool = True,
                  remove_dead_air: bool = True, reframe: bool = True,
                  caption_style: str = "bold", keywords: bool = True, emoji: bool = False,
-                 hook_title: bool = True, progress_bar: bool = True, zoom: bool = True) -> dict:
+                 hook_title: bool = True, progress_bar: bool = True, zoom: bool = True,
+                 progress: Callable[[str, float], None] | None = None) -> dict:
+    """`progress(stage, fraction)` is called as the stages advance (fraction 0..1)."""
     started = time.perf_counter()
+    report = progress or (lambda stage, frac: None)
+    report("probe", 0.0)
     input_path = Path(input_path)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -39,12 +44,15 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         from clipmaker.scenes import detect_scene_cuts
 
         t0 = time.perf_counter()
+        report("scenes", 0.02)
         result["scene_cuts"] = detect_scene_cuts(input_path)
         result["timings"]["scenes_seconds"] = round(time.perf_counter() - t0, 3)
     t0 = time.perf_counter()
     info_ok = info.has_audio and transcribe
     if info_ok:
         from clipmaker.transcribe import transcribe as run_asr
+
+        report("transcribe", 0.08)
 
         result["transcript"] = run_asr(input_path, language=language).to_dict()
     result["timings"]["transcribe_seconds"] = round(time.perf_counter() - t0, 3) if info_ok else None
@@ -53,6 +61,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
 
         from clipmaker.segment import candidate_clips, select_clips, split_sentences
 
+        report("highlights", 0.5)
         sentences = split_sentences(result["transcript"]["segments"])
         result["sentences"] = [_asdict(x) for x in sentences]
         from clipmaker.highlights import rescore
@@ -83,7 +92,8 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         detector = FaceDetector() if reframe else None
         cuts = result["scene_cuts"] or []
         all_words = [w for seg in result["transcript"]["segments"] for w in seg["words"]]
-        for clip in result["clips"]:
+        for n_clip, clip in enumerate(result["clips"]):
+            report(f"render {n_clip + 1}/{len(result['clips'])}", 0.55 + 0.43 * n_clip / len(result["clips"]))
             name = f"{clip['id']}.mp4"
             ranges = kept_ranges(result["transcript"]["segments"], clip["start"], clip["end"]) \
                 if remove_dead_air else [[clip["start"], clip["end"]]]

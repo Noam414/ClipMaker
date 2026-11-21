@@ -51,6 +51,12 @@ plus `clips.json` with timings, text and scores. Options: `--language en|he`
 the speech model (~200 MB download) and a small face detector (~230 KB) into `.cache/models`; set `CLIPMAKER_WHISPER_MODEL=tiny`
 for a smaller, less accurate one.
 
+**Web app:** `clipmaker serve`, then open http://127.0.0.1:8000, drop a video on the page and
+watch the progress bar; the clips are listed (with links to the MP4s) when the job is done.
+Uploads and clips are stored under `CLIPMAKER_DATA_DIR/projects/<id>/`. The web process runs
+one background worker; set `CLIPMAKER_WORKER=0` to turn it off. The database schema is created
+and upgraded automatically on start (Alembic migrations in `src/clipmaker/migrations`).
+
 Settings live in environment variables or `.env` (see `.env.example`). The database
 defaults to a local SQLite file; set `DATABASE_URL` to use PostgreSQL.
 
