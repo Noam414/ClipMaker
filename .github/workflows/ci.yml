@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - name: Install ClipMaker
+        run: pip install -e ".[dev,e2e]"
+      - name: Install headless Chromium (E2E web test)
+        run: python3 -m playwright install --with-deps chromium
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: .cache/models
+          key: models-whisper-base-v1
+      - name: Generate fixtures
+        run: python3 scripts/make_test_videos.py
+      - name: Tests
+        env:
+          CLIPMAKER_TEST_MODELS: "1"
+        run: python3 -m pytest -q
+      - name: Eval (smoke)
+        run: python3 scripts/eval.py --no-history
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t clipmaker:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name cm -p 8000:8000 clipmaker:ci
+          for i in $(seq 1 20); do curl -fs http://localhost:8000/api/health && exit 0; sleep 1; done
+          docker logs cm; exit 1
