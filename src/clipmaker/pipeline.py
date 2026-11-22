@@ -1,7 +1,8 @@
 """End-to-end pipeline: input video -> clips + clips.json.
 
-Stages so far: probe, scene-cut detection, transcribe, sentence segmentation + clip selection,
-dead-air removal, frame-accurate cut with a speaker-following 9:16 crop and burned-in captions.
+Stages (D-013 order): probe, transcribe (audio only), sentence segmentation + clip selection,
+scene-cut detection on the selected ranges only, dead-air removal, frame-accurate cut with a
+speaker-following 9:16 crop and burned-in captions.
 """
 from __future__ import annotations
 
@@ -40,19 +41,12 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         "clips": [],
         "timings": {},
     }
-    if info.has_video:
-        from clipmaker.scenes import detect_scene_cuts
-
-        t0 = time.perf_counter()
-        report("scenes", 0.02)
-        result["scene_cuts"] = detect_scene_cuts(input_path)
-        result["timings"]["scenes_seconds"] = round(time.perf_counter() - t0, 3)
     t0 = time.perf_counter()
     info_ok = info.has_audio and transcribe
     if info_ok:
         from clipmaker.transcribe import transcribe as run_asr
 
-        report("transcribe", 0.08)
+        report("transcribe", 0.02)
 
         result["transcript"] = run_asr(input_path, language=language).to_dict()
     result["timings"]["transcribe_seconds"] = round(time.perf_counter() - t0, 3) if info_ok else None
@@ -78,6 +72,19 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 "duration": round(c.duration, 3), "text": c.text, "score": c.score,
                 "score_parts": parts[id(c)],
             })
+    if info.has_video:
+        # D-013 order: clips are chosen from the audio/transcript alone, so scene detection
+        # only decodes the chosen ranges (+ padding). Without clips (no speech) the whole
+        # video is scanned, so scene cuts are still reported.
+        from clipmaker.scenes import detect_scene_cuts, detect_scene_cuts_in
+
+        t0 = time.perf_counter()
+        report("scenes", 0.52)
+        spans = [(c["start"], c["end"]) for c in result["clips"]]
+        result["scene_cuts"] = detect_scene_cuts_in(input_path, spans, info.duration) if spans \
+            else detect_scene_cuts(input_path)
+        result["scene_cuts_scope"] = "clips" if spans else "full"
+        result["timings"]["scenes_seconds"] = round(time.perf_counter() - t0, 3)
     t0 = time.perf_counter()
     if render and result["clips"] and info.has_video:
         from clipmaker.captions import caption_keywords, clip_words, group_words, write_ass

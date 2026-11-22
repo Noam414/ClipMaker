@@ -87,6 +87,9 @@ def test_speed_report_extrapolates_per_input_stages_only():
     assert rep["extrapolated_60min_s"] == 590.0
     assert rep["meets_target"] is False
     assert m.speed_report(None, 1.0, 600.0) is None
+    # scenes on the selected ranges only: per-clip work, not scaled -> (140 - 70) * 6 + 70
+    ranged = m.speed_report({**result, "scene_cuts_scope": "clips"}, elapsed=140.0, duration=600.0)
+    assert ranged["extrapolated_60min_s"] == 490.0
 
 
 def test_speed_fixture_is_reported_but_kept_out_of_quality_averages(tmp_path):

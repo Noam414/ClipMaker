@@ -209,11 +209,15 @@ def speed_report(result: dict | None, elapsed: float, duration: float,
     """Wall-clock time to all clips, per-stage timings, and an extrapolation to a
     `target_minutes` input: stages that scale with input length (everything except
     rendering, model loading included) are scaled linearly; per-clip stages are kept
-    as they are, since the number of clips is capped (max_clips) regardless of length."""
+    as they are, since the number of clips is capped (max_clips) regardless of length.
+    Scene detection counts as per-clip when it only scanned the selected ranges."""
     if result is None or not duration:
         return None
     timings = dict(result.get("timings") or {})
-    per_clip = sum(timings.get(k) or 0.0 for k in PER_CLIP_STAGES)
+    per_clip_keys = list(PER_CLIP_STAGES)
+    if result.get("scene_cuts_scope") == "clips":  # scene detection only decodes the clips (D-013)
+        per_clip_keys.append("scenes_seconds")
+    per_clip = sum(timings.get(k) or 0.0 for k in per_clip_keys)
     per_input = max(0.0, elapsed - per_clip)
     factor = target_minutes * 60.0 / duration
     stages = {k.removesuffix("_seconds"): v for k, v in timings.items()

@@ -19,7 +19,11 @@ python3 scripts/make_test_videos.py
 ```
 
 Generates synthetic fixtures with exact ground truth in `tests/fixtures/videos/`.
-Requires `ffmpeg` and `espeak-ng`.
+Requires `ffmpeg` and `espeak-ng`. This includes `long_talk`, an ~11-minute video for the
+speed eval (about 2 extra minutes to generate); add `--no-long` to skip it.
+
+`python3 scripts/eval.py` scores every fixture and reports `time_to_all_clips_s` and
+`extrapolated_60min_s` (the goal is all clips of a 60-minute video within 300 s).
 
 ## Running locally
 
