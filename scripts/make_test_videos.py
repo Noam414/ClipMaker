@@ -81,6 +81,7 @@ TWO_SPEAKERS = [
 ]
 
 FPS = 30
+LONG_SECONDS = 600.0
 
 
 def run(cmd: list[str]) -> None:
@@ -142,6 +143,25 @@ def synth_speech(lines, voice: str, tmp: Path, speed: int = 165):
         w.setparams(params)
         w.writeframes(bytes(frames))
     return out, round(t, 3), segments, dead_air
+
+
+def repeat_speech(wav: Path, duration: float, segments, dead_air, min_total: float, tmp: Path):
+    """Loop a synthesized WAV until it is at least `min_total` seconds, shifting the ground truth."""
+    with wave.open(str(wav)) as w:
+        params = w.getparams()
+        data = w.readframes(w.getnframes())
+        one = w.getnframes() / w.getframerate()
+    n = max(1, math.ceil(min_total / one))
+    segs, dead = [], []
+    for k in range(n):
+        off = k * one
+        segs += [{**s, "start": round(s["start"] + off, 3), "end": round(s["end"] + off, 3)} for s in segments]
+        dead += [{"start": round(d["start"] + off, 3), "end": round(d["end"] + off, 3)} for d in dead_air]
+    out = tmp / "long_full.wav"
+    with wave.open(str(out), "wb") as w:
+        w.setparams(params)
+        w.writeframes(data * n)
+    return out, round(one * n, 3), segs, dead
 
 
 def face_track(duration: float, cx_expr, cy_expr, step: float = 0.5):
@@ -296,6 +316,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--force", action="store_true", help="regenerate even if manifest exists")
+    ap.add_argument("--no-long", action="store_true",
+                    help="skip the 10-minute speed fixture (long_talk), e.g. in CI")
     args = ap.parse_args()
 
     require_tools()
@@ -368,6 +390,25 @@ def main() -> None:
         manifest["fixtures"]["scene_cuts"] = {"file": "scene_cuts.mp4", "language": None,
                                               **scene_cuts(out, text_ok),
                                               "notes": "Scene detection should find cuts at 6/12/18/24 s."}
+
+        # 6. Ten-minute talk for the speed eval (M5.5): the English scripts looped to >= 600 s.
+        if not args.no_long:
+            lines = PODCAST_EN + PORTRAIT_EN + [(t, p, k) for t, p, k, *_ in TWO_SPEAKERS]
+            wav, dur, segs, dead = synth_speech(lines, "en-us", tmp)
+            wav, dur, segs, dead = repeat_speech(wav, dur, segs, dead, LONG_SECONDS, tmp)
+            talking_head("long_talk", out, wav, dur, 1920, 1080, 220, 280,
+                         "960+400*sin(2*PI*t/20)", "420", text_ok)
+            manifest["fixtures"]["long_talk"] = {
+                "file": "long_talk.mp4", "language": "en", "duration": dur,
+                "width": 1920, "height": 1080, "speech_segments": segs, "dead_air": dead,
+                "scene_cuts": [],
+                "face_box_size": [220, 280],
+                "face_track": face_track(dur, lambda t: 960 + 400 * math.sin(2 * math.pi * t / 20),
+                                         lambda t: 420),
+                "speed_fixture": True,
+                "notes": "Speed eval: time_to_all_clips_s and its extrapolation to a 60-min input "
+                         "(target <= 300 s, D-013). Content repeats, so clip choice isn't meaningful here.",
+            }
 
     for name, fx in manifest["fixtures"].items():
         fx["probed_duration"] = probe_duration(out / fx["file"])

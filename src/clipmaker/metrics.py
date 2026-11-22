@@ -198,6 +198,38 @@ def contact_sheet(clip: Path, out_png: Path, tiles: int = 6) -> bool:
     return proc.returncode == 0
 
 
+# ------------------------------------------------------------ speed (M5.5, D-013)
+SPEED_TARGET_S = 300.0
+SPEED_TARGET_MINUTES = 60.0
+PER_CLIP_STAGES = ("render_seconds",)
+
+
+def speed_report(result: dict | None, elapsed: float, duration: float,
+                 target_minutes: float = SPEED_TARGET_MINUTES) -> dict | None:
+    """Wall-clock time to all clips, per-stage timings, and an extrapolation to a
+    `target_minutes` input: stages that scale with input length (everything except
+    rendering, model loading included) are scaled linearly; per-clip stages are kept
+    as they are, since the number of clips is capped (max_clips) regardless of length."""
+    if result is None or not duration:
+        return None
+    timings = dict(result.get("timings") or {})
+    per_clip = sum(timings.get(k) or 0.0 for k in PER_CLIP_STAGES)
+    per_input = max(0.0, elapsed - per_clip)
+    factor = target_minutes * 60.0 / duration
+    stages = {k.removesuffix("_seconds"): v for k, v in timings.items()
+              if k != "total_seconds" and v is not None}
+    stages["other"] = round(max(0.0, elapsed - sum(stages.values())), 3)
+    extrapolated = per_input * factor + per_clip
+    return {
+        "time_to_all_clips_s": round(elapsed, 1),
+        "input_minutes": round(duration / 60.0, 2),
+        "stages_s": {k: round(v, 1) for k, v in stages.items()},
+        f"extrapolated_{int(target_minutes)}min_s": round(extrapolated, 1),
+        "target_s": SPEED_TARGET_S,
+        "meets_target": extrapolated <= SPEED_TARGET_S,
+    }
+
+
 # ------------------------------------------------------------ per fixture
 def score_fixture(gt: dict, result: dict | None, out_dir: Path, elapsed: float,
                   frames_dir: Path | None = None) -> dict:
@@ -209,8 +241,10 @@ def score_fixture(gt: dict, result: dict | None, out_dir: Path, elapsed: float,
         "valid_output_rate": None, "clip_count": 0,
         "seconds_per_input_minute": round(elapsed / (duration / 60), 2) if duration else None,
     }
+    metrics["time_to_all_clips_s"] = round(elapsed, 1)
     if result is None:
         return {"metrics": metrics, "clips": []}
+    speed = speed_report(result, elapsed, duration) if gt.get("speed_fixture") else None
     segments = gt.get("speech_segments") or []
     clips = result.get("clips") or []
     metrics["clip_count"] = len(clips)
@@ -237,7 +271,10 @@ def score_fixture(gt: dict, result: dict | None, out_dir: Path, elapsed: float,
     checked = [c for c in clip_reports if "valid" in c]
     if checked:
         metrics["valid_output_rate"] = sum(c["valid"] for c in checked) / len(checked)
-    return {"metrics": metrics, "clips": clip_reports}
+    report = {"metrics": metrics, "clips": clip_reports}
+    if speed:
+        report["speed"] = speed
+    return report
 
 
 def aggregate(per_fixture: dict[str, dict]) -> dict:
@@ -246,10 +283,18 @@ def aggregate(per_fixture: dict[str, dict]) -> dict:
     summary: dict = {"fixtures": len(per_fixture),
                      "clip_count": sum(r["metrics"]["clip_count"] for r in per_fixture.values()),
                      "errors": sum(1 for r in per_fixture.values() if r.get("error"))}
+    # The speed fixture loops the same script; keep it out of the quality averages so the
+    # summary stays comparable with earlier runs. Its own metrics stay in its fixture entry.
+    quality = [r for r in per_fixture.values() if not r.get("speed")]
     for k in keys:
-        vals = [r["metrics"][k] for r in per_fixture.values() if r["metrics"].get(k) is not None]
+        vals = [r["metrics"][k] for r in quality if r["metrics"].get(k) is not None]
         if k == "dead_air_remaining_s":
             summary[k] = round(sum(vals), 3) if vals else None
         else:
             summary[k] = round(sum(vals) / len(vals), 4) if vals else None
+    speed = next((r["speed"] for r in per_fixture.values() if r.get("speed")), None)
+    if speed:
+        summary["time_to_all_clips_s"] = speed["time_to_all_clips_s"]
+        summary["extrapolated_60min_s"] = speed.get("extrapolated_60min_s")
+        summary["speed_stages_s"] = speed["stages_s"]
     return summary

@@ -75,3 +75,27 @@ def test_visible_crop_matches_zoom_anchor():
     assert abs(w - 608 / 1.12) < 1e-6 and abs(h - 1080 / 1.12) < 1e-6
     assert abs((x - 100) - 0.5 * (608 - w)) < 1e-6
     assert abs(y - 0.35 * (1080 - h)) < 1e-6
+
+
+def test_speed_report_extrapolates_per_input_stages_only():
+    result = {"timings": {"scenes_seconds": 20.0, "transcribe_seconds": 60.0,
+                          "render_seconds": 50.0, "total_seconds": 135.0}}
+    rep = m.speed_report(result, elapsed=140.0, duration=600.0)
+    assert rep["time_to_all_clips_s"] == 140.0
+    assert rep["stages_s"] == {"scenes": 20.0, "transcribe": 60.0, "render": 50.0, "other": 10.0}
+    # (140 - 50) * 6 + 50: input-proportional work scales to 60 min, rendering doesn't
+    assert rep["extrapolated_60min_s"] == 590.0
+    assert rep["meets_target"] is False
+    assert m.speed_report(None, 1.0, 600.0) is None
+
+
+def test_speed_fixture_is_reported_but_kept_out_of_quality_averages(tmp_path):
+    fast = {"metrics": {**m.score_fixture({"duration": 60}, None, tmp_path, 6.0)["metrics"], "wer": 0.1}}
+    slow = m.score_fixture({"duration": 600, "speed_fixture": True},
+                           {"timings": {"render_seconds": 10.0}, "clips": []}, tmp_path, 40.0)
+    slow["metrics"]["wer"] = 0.9
+    summary = m.aggregate({"a": fast, "long": slow})
+    assert summary["wer"] == 0.1
+    assert summary["seconds_per_input_minute"] == 6.0
+    assert summary["time_to_all_clips_s"] == 40.0
+    assert summary["extrapolated_60min_s"] == 190.0  # (40 - 10) * 6 + 10

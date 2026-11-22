@@ -29,7 +29,7 @@ jobs:
           path: .cache/models
           key: models-whisper-base-v1
       - name: Generate fixtures
-        run: python3 scripts/make_test_videos.py
+        run: python3 scripts/make_test_videos.py --no-long
       - name: Tests
         env:
           CLIPMAKER_TEST_MODELS: "1"
