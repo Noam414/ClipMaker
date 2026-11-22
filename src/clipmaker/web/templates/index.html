@@ -66,6 +66,9 @@
       if (job.status === "failed") {
         show("Failed", 1); $("error").textContent = (job.error || "").split("\n")[0]; $("go").disabled = false; return;
       }
+      if (job.status !== "done" && job.clips_ready > 0) {
+        location.href = `/projects/${projectId}`; return;  // first clip is ready: the gallery fills in from here
+      }
       if (job.status !== "done") {
         show(job.status === "queued" ? "Waiting in queue…" : `Working: ${job.stage}`, job.progress);
         setTimeout(() => poll(jobId, projectId), 1000); return;

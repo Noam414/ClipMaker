@@ -38,8 +38,16 @@
       {% elif job.status == "failed" %}
         <div class="err">Processing failed: {{ (job.error or "").splitlines()[0] }}</div>
       {% else %}
-        <div class="muted" id="wait">Still working ({{ job.stage }}, {{ (job.progress * 100)|round|int }}%). This page refreshes by itself.</div>
-        <script>setTimeout(() => location.reload(), 3000);</script>
+        <div class="muted" id="wait">{% if clips %}{{ clips|length }} clip{{ "" if clips|length == 1 else "s" }} ready, more coming{% else %}Still working{% endif %} ({{ job.stage }}, {{ (job.progress * 100)|round|int }}%). This page refreshes by itself.</div>
+        <script>
+          // Reload when the job advances, but never while a clip is playing.
+          (function tick() {
+            setTimeout(() => {
+              const playing = [...document.querySelectorAll("video")].some(v => !v.paused && !v.ended);
+              if (playing) tick(); else location.reload();
+            }, 3000);
+          })();
+        </script>
       {% endif %}
     {% endif %}
     {% if job and job.status == "done" and not clips %}<p class="muted">No clips were found in this video.</p>{% endif %}

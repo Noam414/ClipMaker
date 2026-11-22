@@ -61,6 +61,12 @@ def _set_progress(engine: Engine, job_id: int, stage: str, frac: float) -> None:
                      .values(stage=stage[:64], progress=max(0.0, min(1.0, float(frac)))))
 
 
+def _clip_row(project_id: int, job_id: int, c: dict) -> Clip:
+    return Clip(project_id=project_id, job_id=job_id, key=c["id"], start=c["start"], end=c["end"],
+                score=float(c.get("score") or 0.0), title=c.get("title") or "", text=c.get("text") or "",
+                file=f"clips/{c['file']}" if c.get("file") else None, data=c)
+
+
 def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
     """Run one claimed job; store its clips. Returns the final status."""
     Session = session_factory(engine)
@@ -70,8 +76,18 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
         pdir = project_dir(data_dir, project.id)
         source, options, project_id = pdir / project.source_file, dict(job.options or {}), project.id
     out_dir = pdir / "clips"
+    stored: set[str] = set()
+
+    def store_clip(c: dict) -> None:
+        # Clips are stored as soon as they're rendered, so the gallery fills in one by one.
+        with Session() as s:
+            s.add(_clip_row(project_id, job_id, c))
+            s.commit()
+        stored.add(c["id"])
+
     try:
-        result = runner(source, out_dir, progress=lambda st, f: _set_progress(engine, job_id, st, f), **options)
+        result = runner(source, out_dir, progress=lambda st, f: _set_progress(engine, job_id, st, f),
+                        on_clip=store_clip, **options)
     except Exception as exc:  # the job fails, the worker keeps going
         log.exception("job %s failed", job_id)
         with Session() as s:
@@ -82,9 +98,8 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
         return "failed"
     with Session() as s:
         for c in result.get("clips", []):
-            s.add(Clip(project_id=project_id, job_id=job_id, key=c["id"], start=c["start"], end=c["end"],
-                       score=float(c.get("score") or 0.0), title=c.get("title") or "", text=c.get("text") or "",
-                       file=f"clips/{c['file']}" if c.get("file") else None, data=c))
+            if c["id"] not in stored:
+                s.add(_clip_row(project_id, job_id, c))
         job = s.get(Job, job_id)
         job.status, job.stage, job.progress, job.finished_at = "done", "done", 1.0, utcnow()
         s.commit()

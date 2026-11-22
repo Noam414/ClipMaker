@@ -11,13 +11,13 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from clipmaker import __version__
 from clipmaker.config import Settings, get_settings
 from clipmaker.db import make_engine, ping
 from clipmaker.jobs import Runner, Worker, default_runner, enqueue, project_dir
-from clipmaker.store import Job, Project, init_db, session_factory
+from clipmaker.store import Clip, Job, Project, init_db, session_factory
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
@@ -87,7 +87,8 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
             job = s.get(Job, job_id)
             if job is None:
                 raise HTTPException(404, "no such job")
-            return job.to_dict()
+            ready = s.scalar(select(func.count()).select_from(Clip).where(Clip.job_id == job_id))
+            return job.to_dict() | {"clips_ready": ready or 0}
 
     @app.get("/api/projects/{project_id}")
     def project_detail(project_id: int) -> dict:

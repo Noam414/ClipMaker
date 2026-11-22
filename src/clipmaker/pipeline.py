@@ -33,8 +33,11 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                  remove_dead_air: bool = True, reframe: bool = True,
                  caption_style: str = "bold", keywords: bool = True, emoji: bool = False,
                  hook_title: bool = True, progress_bar: bool = True, zoom: bool = True,
-                 progress: Callable[[str, float], None] | None = None) -> dict:
-    """`progress(stage, fraction)` is called as the stages advance (fraction 0..1)."""
+                 progress: Callable[[str, float], None] | None = None,
+                 on_clip: Callable[[dict], None] | None = None) -> dict:
+    """`progress(stage, fraction)` is called as the stages advance (fraction 0..1).
+    `on_clip(clip)` is called with each clip's clips.json entry as soon as that clip is
+    rendered (from the calling thread), so a UI can show clips one by one."""
     started = time.perf_counter()
     report = progress or (lambda stage, frac: None)
     report("probe", 0.0)
@@ -159,9 +162,11 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         result["render_workers"] = workers
         report(f"render 0/{len(clips)}", 0.55)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(render_one, c) for c in clips]
+            futures = {pool.submit(render_one, c): c for c in clips}
             for done, fut in enumerate(as_completed(futures), 1):
                 fut.result()
+                if on_clip:
+                    on_clip(futures[fut])
                 report(f"render {done}/{len(clips)}", 0.55 + 0.43 * done / len(clips))
     result["timings"]["render_seconds"] = round(time.perf_counter() - t0, 3)
     result["timings"]["total_seconds"] = round(time.perf_counter() - started, 3)

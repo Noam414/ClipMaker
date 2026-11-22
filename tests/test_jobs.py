@@ -140,3 +140,32 @@ def test_download_single_and_zip(tmp_path):
     assert zipfile.ZipFile(io.BytesIO(z.content)).namelist() == ["01_clip_01.mp4"]
     page = client.get(f"/projects/{pid}").text
     assert f"/projects/{pid}/clips.zip" in page and "?download=1" in page
+
+
+def test_clips_are_stored_as_soon_as_they_are_rendered(tmp_path):
+    seen: list[int] = []
+    holder: dict = {}
+
+    def runner(input_path, out_dir, progress=None, on_clip=None, **options):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        clips = []
+        for n in (1, 2):
+            c = {"id": f"clip_0{n}", "start": 10.0 * n, "end": 10.0 * n + 5, "score": 0.5 + n / 10,
+                 "title": "", "text": "x.", "file": f"clip_0{n}.mp4"}
+            (out_dir / c["file"]).write_bytes(b"\x00")
+            on_clip(c)
+            clips.append(c)
+            # the first clip is visible through the API while the job is still running
+            seen.append(holder["client"].get(f"/api/jobs/{holder['job']}").json()["clips_ready"])
+        return {"clips": clips}
+
+    app = create_app(_settings(tmp_path), runner=runner)
+    client = TestClient(app)
+    holder["client"] = client
+    body = client.post("/api/projects", files={"file": ("a.mp4", b"bytes", "video/mp4")}).json()
+    holder["job"] = body["job_id"]
+    assert app.state.worker.run_once() == "done"
+    assert seen == [1, 2]
+    p = client.get(f"/api/projects/{body['project_id']}").json()
+    assert sorted(c["key"] for c in p["clips"]) == ["clip_01", "clip_02"]  # not stored twice
+    assert client.get(f"/api/jobs/{body['job_id']}").json()["clips_ready"] == 2

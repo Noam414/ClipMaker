@@ -61,7 +61,7 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [x] Faster transcription: benchmark Whisper tiny vs base and other sherpa-onnx models for English; choose by WER vs speed (Hebrew stays on Whisper) — Moonshine base for English, language ID when none is given (D-016)
 - [ ] Decode VAD chunks in batches (`decode_streams`) or in parallel workers, and re-measure on ARM (each recognizer already uses both cores)
 - [x] Render the clips in parallel (one ffmpeg per core) with a faster x264 preset; check quality on the contact sheets (D-017)
-- [ ] Results appear as they come: each clip shows up in the gallery as soon as it's rendered
+- [x] Results appear as they come: each clip shows up in the gallery as soon as it's rendered (`on_clip` callback, `clips_ready` in `/api/jobs/<id>`)
 - [ ] URL import of direct media links (`http(s)://…/video.mp4`, HLS `.m3u8`): size and length limits, block private/internal addresses (SSRF)
 - [ ] Audio-only fetch from the link: for HLS/DASH sources with a separate audio track, download only the audio; for a single MP4 file, stream the audio with ffmpeg without saving the video
 - [ ] Fetch only the selected video ranges from the link (ffmpeg `-ss`/`-to` over HTTP range requests); eval test with a local HTTP server that counts bytes served
