@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-018: Direct-link import with SSRF guards, standard library only (2026-11-22)
+- Decision: `clipmaker/fetch.py` downloads a direct media link with `urllib` (no new dependency). Only http/https, no credentials in the link; every address the host resolves to must be public (`ipaddress.is_global`, not multicast; IPv4-mapped IPv6 unwrapped), which blocks localhost, private LANs, link-local and cloud metadata (169.254.169.254) and carrier-grade NAT. The same check runs on every redirect (max 5). Limits: 4 GB while streaming (and from Content-Length up front), 60 minutes by ffprobe after the download; partial files are removed. Errors are `FetchError` with messages that are safe to show users. The CLI accepts a link in place of a file (`clipmaker https://…/talk.mp4 --out out`); the file is kept in `<out>/source/`. `CLIPMAKER_ALLOW_PRIVATE_URLS=1` turns the address check off for local testing only.
+- Known limits: DNS rebinding (the name is resolved for the check and again for the connection) — pinning the checked IP is a follow-up before the public server goes live; HLS (`.m3u8`) isn't accepted yet because ffmpeg would fetch segment URLs from the playlist without these checks; the web form for links is the next step.
+- Alternatives considered: `requests`/`httpx` (another dependency for the same thing); letting ffmpeg open the URL directly (no control over redirects or internal addresses).
+- How to reverse: remove the `is_url` branch in `cli.py`; the module has no other users.
+
 ## D-017: Clips render in parallel threads, x264 preset superfast (2026-11-22)
 - Decision: each clip (captions file, reframe plan, ffmpeg encode) runs in a thread pool with one worker per core (max 4, `CLIPMAKER_RENDER_WORKERS`); each worker has its own YuNet detector, and progress is reported from the main thread as clips finish. The x264 preset moved from veryfast to superfast (`CLIPMAKER_X264_PRESET`), crf stays 20.
 - Measured (one 28 s clip on the 2-core VM): veryfast 9.3 s, superfast 8.0 s; two clips at once 15.9 s (veryfast) / 13.5 s (superfast) vs 18.6 s one after another. The filter chain (crop, lanczos scale, zoompan, libass) is mostly single-threaded, so a second clip fills the idle core. Eval: `long_talk` render 58.6 → 46.4 s. Superfast files are ~65 % bigger (about 2 MB for 28 s); contact sheets look the same.

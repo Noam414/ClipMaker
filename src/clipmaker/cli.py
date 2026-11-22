@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
+from pathlib import Path
 
 from clipmaker import __version__
 
@@ -43,7 +44,7 @@ def _probe(argv: list[str]) -> int:
 
 def _process(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="clipmaker", description="Turn a long video into short vertical clips.")
-    parser.add_argument("input", help="input video file")
+    parser.add_argument("input", help="input video file, or a direct http(s) link to one")
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--language", default=None, help="speech language code, e.g. en or he (default: auto-detect)")
     parser.add_argument("--no-transcribe", action="store_true", help="skip speech-to-text")
@@ -63,7 +64,16 @@ def _process(argv: list[str]) -> int:
 
     from clipmaker.pipeline import run_pipeline
 
-    result = run_pipeline(args.input, args.out, language=args.language, transcribe=not args.no_transcribe,
+    source = args.input
+    from clipmaker.fetch import FetchError, download, filename_from_url, is_url
+
+    if is_url(source):
+        try:
+            source = download(source, Path(args.out) / "source" / filename_from_url(source))
+        except FetchError as exc:
+            print(f"clipmaker: {exc}", file=sys.stderr)
+            return 2
+    result = run_pipeline(source, args.out, language=args.language, transcribe=not args.no_transcribe,
                           captions=not args.no_captions, max_clips=args.max_clips,
                           remove_dead_air=not args.keep_pauses, reframe=not args.static_crop,
                           caption_style=args.caption_style, keywords=not args.no_keywords,
