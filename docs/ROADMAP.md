@@ -3,6 +3,9 @@
 The nightly agent ticks items as they're completed and may split, reorder or add
 items, with a note in `DECISIONS.md` when the change is significant. Work top-down.
 
+**Priority (owner, 2026-11-22): next run starts with the YouTube bot-check research item in M5.5** (search GitHub for
+tools that get yt-dlp past YouTube's "confirm you're not a bot" block on server IPs). Then continue as below.
+
 **Priority (owner, 2026-11-21):** first M5.5 (link to clips in ≤ 5 minutes), then the M7 preparation
 items (ARM check, image, deploy kit, guardrails), then the remaining unchecked items top-down.
 M8 and M9 are later: start them only after M7 is deployed.
@@ -67,6 +70,7 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [ ] HLS `.m3u8` links: check every playlist/segment URL with the same SSRF rules (ffmpeg `-protocol_whitelist` + a checked fetch)
 - [ ] Audio-only fetch from the link: for HLS/DASH sources with a separate audio track, download only the audio; for a single MP4 file, stream the audio with ffmpeg without saving the video
 - [ ] Fetch only the selected video ranges from the link (ffmpeg `-ss`/`-to` over HTTP range requests); eval test with a local HTTP server that counts bytes served
+- [ ] **(owner request 2026-11-22, do first)** YouTube bot checks on server IPs: search GitHub (`gh api search/repositories`) for maintained tools that work with yt-dlp, e.g. PO-token provider plugins (such as `bgutil-ytdlp-pot-provider`), yt-dlp's cookie support (cookies from an account the owner controls), an optional proxy setting. Compare stars/activity/licence, pick one, record it in `DECISIONS.md`, add it behind config in the fetcher module, test it against the local fake site, and put whatever needs the owner (cookies, proxy account) in `NEEDS_HUMAN.md`. Out of scope: getting around the agent VM's own network block on youtube.com — that's only opened by the owner (H-006)
 - [ ] YouTube and Twitch links (owner decision H-005, D-014) through yt-dlp: audio-only format first, then only the selected sections (`--download-sections`); Twitch VODs and clips; a "I own or have the rights to this video" checkbox before processing
 - [ ] Platform-link fallbacks: clear error messages when a platform blocks the server ("upload the file instead"), retries, and a nightly-safe test with a local fake site (youtube.com/twitch.tv are blocked in the agent's VM)
 
