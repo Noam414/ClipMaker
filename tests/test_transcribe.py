@@ -57,3 +57,40 @@ def test_cli_end_to_end_portrait(manifest, tmp_path):
     assert {"start", "end", "text", "score", "file"} <= clip.keys()
     info = probe(out / clip["file"])
     assert (info.width, info.height) == (1080, 1920) and info.has_audio
+
+
+def test_english_goes_to_moonshine_and_hebrew_stays_on_whisper(monkeypatch):
+    from clipmaker.transcribe import choose_engine
+
+    monkeypatch.delenv("CLIPMAKER_EN_ENGINE", raising=False)
+    assert choose_engine("en", "base") == "moonshine-base"
+    assert choose_engine("he", "base") == "whisper-base"
+    assert choose_engine(None, "small") == "whisper-small"
+    monkeypatch.setenv("CLIPMAKER_EN_ENGINE", "whisper")
+    assert choose_engine("en", "tiny") == "whisper-tiny"
+    monkeypatch.setenv("CLIPMAKER_EN_ENGINE", "nope")
+    with pytest.raises(ValueError):
+        choose_engine("en", "base")
+
+
+def test_speech_sample_joins_chunks_up_to_the_limit():
+    import numpy as np
+
+    from clipmaker.transcribe import SAMPLE_RATE, speech_sample
+
+    chunks = [(0.0, np.ones(SAMPLE_RATE * 20, np.float32)), (25.0, np.ones(SAMPLE_RATE * 20, np.float32))]
+    assert len(speech_sample(chunks, 30.0)) == SAMPLE_RATE * 30
+    assert len(speech_sample([], 30.0)) == 0
+
+
+@pytest.mark.skipif(not _models_available(), reason="whisper model not cached; set CLIPMAKER_TEST_MODELS=1 to download")
+def test_language_is_detected_and_english_uses_moonshine(manifest, monkeypatch):
+    from clipmaker.transcribe import transcribe
+
+    from conftest import FIXTURES
+
+    monkeypatch.delenv("CLIPMAKER_EN_ENGINE", raising=False)
+    gt = manifest["fixtures"]["portrait_short"]
+    tr = transcribe(FIXTURES / gt["file"])  # no language given
+    assert tr.language == "en" and tr.model == "moonshine-base-int8"
+    assert wer(" ".join(s["text"] for s in gt["speech_segments"]), tr.text) < 0.3

@@ -36,25 +36,17 @@ def silero_vad() -> Path:
     return path
 
 
-def whisper(name: str = "base") -> dict[str, Path]:
-    """Return paths to int8 encoder/decoder + tokens for a sherpa-onnx Whisper model."""
-    if name not in WHISPER_MODELS:
-        raise ValueError(f"unknown whisper model {name!r}; choose from {WHISPER_MODELS}")
-    folder = models_dir() / f"sherpa-onnx-whisper-{name}"
-    files = {
-        "encoder": folder / f"{name}-encoder.int8.onnx",
-        "decoder": folder / f"{name}-decoder.int8.onnx",
-        "tokens": folder / f"{name}-tokens.txt",
-    }
+def _fetch_release_archive(archive: str, folder: Path, files: dict[str, Path]) -> dict[str, Path]:
+    """Download `archive` (.tar.bz2) from the sherpa-onnx release and keep only `files`."""
     if all(p.is_file() for p in files.values()):
         return files
     wanted = {p.name for p in files.values()}
     with tempfile.TemporaryDirectory(dir=models_dir()) as tmp:
-        archive = Path(tmp) / "model.tar.bz2"
-        _download(f"{SHERPA_RELEASE}/sherpa-onnx-whisper-{name}.tar.bz2", archive)
+        path = Path(tmp) / "model.tar.bz2"
+        _download(f"{SHERPA_RELEASE}/{archive}", path)
         staging = Path(tmp) / "out"
         staging.mkdir()
-        with tarfile.open(archive, "r:bz2") as tar:
+        with tarfile.open(path, "r:bz2") as tar:
             for member in tar.getmembers():
                 base = Path(member.name).name
                 if member.isfile() and base in wanted:
@@ -68,6 +60,39 @@ def whisper(name: str = "base") -> dict[str, Path]:
         for p in staging.iterdir():
             os.replace(p, folder / p.name)
     return files
+
+
+def whisper(name: str = "base") -> dict[str, Path]:
+    """Return paths to int8 encoder/decoder + tokens for a sherpa-onnx Whisper model."""
+    if name not in WHISPER_MODELS:
+        raise ValueError(f"unknown whisper model {name!r}; choose from {WHISPER_MODELS}")
+    folder = models_dir() / f"sherpa-onnx-whisper-{name}"
+    files = {
+        "encoder": folder / f"{name}-encoder.int8.onnx",
+        "decoder": folder / f"{name}-decoder.int8.onnx",
+        "tokens": folder / f"{name}-tokens.txt",
+    }
+    return _fetch_release_archive(f"sherpa-onnx-whisper-{name}.tar.bz2", folder, files)
+
+
+# Moonshine (Useful Sensors, MIT licence for the English models): English-only ASR that
+# scales its compute with the audio length instead of padding to 30 s like Whisper (D-016).
+MOONSHINE_MODELS = ("tiny", "base")
+
+
+def moonshine(name: str = "base") -> dict[str, Path]:
+    """Return paths to the int8 sherpa-onnx Moonshine model files (English only)."""
+    if name not in MOONSHINE_MODELS:
+        raise ValueError(f"unknown moonshine model {name!r}; choose from {MOONSHINE_MODELS}")
+    folder = models_dir() / f"sherpa-onnx-moonshine-{name}-en-int8"
+    files = {
+        "preprocessor": folder / "preprocess.onnx",
+        "encoder": folder / "encode.int8.onnx",
+        "uncached_decoder": folder / "uncached_decode.int8.onnx",
+        "cached_decoder": folder / "cached_decode.int8.onnx",
+        "tokens": folder / "tokens.txt",
+    }
+    return _fetch_release_archive(f"sherpa-onnx-moonshine-{name}-en-int8.tar.bz2", folder, files)
 
 
 # YuNet face detector (MIT), from opencv_zoo. The repo stores it with git LFS, so the

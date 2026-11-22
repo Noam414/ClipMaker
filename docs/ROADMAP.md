@@ -58,7 +58,8 @@ cores): ~26 s of processing per input minute, i.e. ~26 min for a 60-min video; t
 scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [x] Speed eval: a 10-min synthetic fixture, a `time_to_all_clips_s` metric with per-stage timings, and the value extrapolated to 60 min; target ≤ 300 s (`long_talk`, D-015)
 - [x] Reorder the pipeline: audio first (extract with `-vn`), transcribe and select clips from the audio alone; scene detection, face tracking and render only on the selected ranges (+2 s padding) (D-015)
-- [ ] Faster transcription: benchmark Whisper tiny vs base, other sherpa-onnx models for English, and VAD chunks in parallel on all cores; choose by WER vs speed (Hebrew stays on Whisper)
+- [x] Faster transcription: benchmark Whisper tiny vs base and other sherpa-onnx models for English; choose by WER vs speed (Hebrew stays on Whisper) — Moonshine base for English, language ID when none is given (D-016)
+- [ ] Decode VAD chunks in batches (`decode_streams`) or in parallel workers, and re-measure on ARM (each recognizer already uses both cores)
 - [ ] Render the clips in parallel (one ffmpeg per core) with a faster x264 preset; check quality on the contact sheets
 - [ ] Results appear as they come: each clip shows up in the gallery as soon as it's rendered
 - [ ] URL import of direct media links (`http(s)://…/video.mp4`, HLS `.m3u8`): size and length limits, block private/internal addresses (SSRF)
