@@ -62,3 +62,19 @@ def test_zoom_with_dead_air_ranges(tiny_video, tmp_path):
     out = render_clip(tiny_video, tmp_path / "r.mp4", 0.0, 3.0, center_crop(640, 360),
                       ranges=[[0.0, 1.2], [1.6, 3.0]], zoom=zoom_expression([(0.5, 1.0)]), fps=25)
     assert abs(probe(out).duration - 2.6) < 0.15
+
+
+def test_render_workers_and_preset_settings(monkeypatch):
+    from clipmaker.pipeline import render_workers
+    from clipmaker.render import x264_preset
+
+    monkeypatch.setenv("CLIPMAKER_RENDER_WORKERS", "3")
+    assert render_workers(5) == 3 and render_workers(2) == 2 and render_workers(1) == 1
+    monkeypatch.setenv("CLIPMAKER_RENDER_WORKERS", "junk")
+    assert 1 <= render_workers(5) <= 4
+    monkeypatch.delenv("CLIPMAKER_X264_PRESET", raising=False)
+    assert x264_preset() == "superfast"
+    monkeypatch.setenv("CLIPMAKER_X264_PRESET", "Medium")
+    assert x264_preset() == "medium"
+    monkeypatch.setenv("CLIPMAKER_X264_PRESET", "placebo; rm -rf /")
+    assert x264_preset() == "superfast"

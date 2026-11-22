@@ -1,6 +1,7 @@
 """Render clips with ffmpeg: frame-accurate cut, crop to 9:16, scale to 1080x1920."""
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,6 +66,16 @@ def _escape(path: Path) -> str:
     return str(Path(path).as_posix()).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
+X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium")
+
+
+def x264_preset() -> str:
+    """`CLIPMAKER_X264_PRESET`, default superfast (M5.5: ~15 % faster than veryfast at crf 20,
+    with somewhat larger files)."""
+    preset = os.environ.get("CLIPMAKER_X264_PRESET", "superfast").strip().lower()
+    return preset if preset in X264_PRESETS else "superfast"
+
+
 def render_clip(src: Path, dst: Path, start: float, end: float, crop: Crop,
                 subtitles: Path | None = None, fonts_dir: Path | None = None,
                 ranges: list[list[float]] | None = None, xy: tuple[str, str] | None = None,
@@ -96,7 +107,7 @@ def render_clip(src: Path, dst: Path, start: float, end: float, crop: Crop,
         ffmpeg, "-v", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{max(end - start, 0.1):.3f}",
         *filter_args,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:v", "libx264", "-preset", x264_preset(), "-crf", "20",
         "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
         "-movflags", "+faststart", str(dst),
     ]

@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-017: Clips render in parallel threads, x264 preset superfast (2026-11-22)
+- Decision: each clip (captions file, reframe plan, ffmpeg encode) runs in a thread pool with one worker per core (max 4, `CLIPMAKER_RENDER_WORKERS`); each worker has its own YuNet detector, and progress is reported from the main thread as clips finish. The x264 preset moved from veryfast to superfast (`CLIPMAKER_X264_PRESET`), crf stays 20.
+- Measured (one 28 s clip on the 2-core VM): veryfast 9.3 s, superfast 8.0 s; two clips at once 15.9 s (veryfast) / 13.5 s (superfast) vs 18.6 s one after another. The filter chain (crop, lanczos scale, zoompan, libass) is mostly single-threaded, so a second clip fills the idle core. Eval: `long_talk` render 58.6 → 46.4 s. Superfast files are ~65 % bigger (about 2 MB for 28 s); contact sheets look the same.
+- Alternatives considered: ultrafast (larger files and visible blocking at crf 20); one ffmpeg process with several outputs (complex graph, no clear gain).
+- How to reverse: `CLIPMAKER_RENDER_WORKERS=1` and `CLIPMAKER_X264_PRESET=veryfast`.
+
 ## D-016: English speech on Moonshine base; language identified with Whisper when not given (2026-11-22)
 - Decision: English is transcribed with Moonshine base (sherpa-onnx int8, from the k2-fsa GitHub release; **licence: MIT**, Useful Sensors, English models). Hebrew and every other language stay on Whisper base (D-002). When no language is given (web uploads), the language is identified from the first 30 s of speech with the Whisper base encoder (sherpa-onnx `SpokenLanguageIdentification`), then routed. `CLIPMAKER_EN_ENGINE=whisper` restores the old behaviour; `transcribe(model=...)` still forces Whisper.
 - Benchmark (2 min of `long_talk`, the same VAD chunks, 2 threads, x86 VM): Whisper base 13.6 s / WER 0.104; Whisper tiny 7.1 s / 0.228; Moonshine base 5.7 s / 0.121; Moonshine tiny 3.9 s / 0.156. Merging VAD chunks into ~25 s windows didn't speed Whisper up here (and sherpa-onnx returns no Whisper token timestamps), so it wasn't adopted. Full eval: transcription of `long_talk` 58.8 → 34.3 s; mean English WER about the same (0.111 → 0.108: portrait 0.12 → 0.21, two speakers 0.15 → 0.03).

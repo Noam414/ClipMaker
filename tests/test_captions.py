@@ -151,6 +151,10 @@ def test_hook_title():
     assert hook_title("Stop scrolling.") == "Stop scrolling"
     assert hook_title("אז הסוד הוא פשוט. עוד") == "הסוד הוא פשוט"
     assert hook_title("um") == ""
+    # a filler-only first sentence (Moonshine writes "Okay." as its own sentence) is skipped
+    assert hook_title("Okay. Here is the thing nobody tells you about motivation.") == \
+        "Here is the thing nobody tells you…"
+    assert hook_title("Um. So.") == ""
 
 
 def test_title_and_progress_bar_drawn(tmp_path):

@@ -76,11 +76,15 @@ _LEADING_FILLERS = {"okay", "ok", "so", "um", "uh", "well", "alright", "anyway",
 
 def hook_title(text: str, max_words: int = 7) -> str:
     """A short title for the first seconds of a clip: its opening sentence without
-    leading filler, cut to `max_words` words (with an ellipsis), first letter capitalised."""
-    first = re.split(r"(?<=[.?!…])\s+", text.strip(), maxsplit=1)[0]
-    words = first.split()
-    while words and _norm(words[0]).strip("'") in _LEADING_FILLERS:
-        words.pop(0)
+    leading filler, cut to `max_words` words (with an ellipsis), first letter capitalised.
+    A filler-only opening sentence ("Okay.") is skipped in favour of the next one."""
+    words: list[str] = []
+    for sentence in re.split(r"(?<=[.?!…])\s+", text.strip()):
+        words = sentence.split()
+        while words and _norm(words[0]).strip("'") in _LEADING_FILLERS:
+            words.pop(0)
+        if words:
+            break
     if not words:
         return ""
     cut = len(words) > max_words
