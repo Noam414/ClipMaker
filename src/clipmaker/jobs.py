@@ -86,6 +86,12 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
         stored.add(c["id"])
 
     try:
+        url = options.pop("source_url", None)
+        if url:  # a pasted link: download it inside the job, with progress (M5.5)
+            from clipmaker.fetch import download
+
+            _set_progress(engine, job_id, "download", 0.0)
+            download(url, source, progress=lambda f: _set_progress(engine, job_id, "download", f))
         result = runner(source, out_dir, progress=lambda st, f: _set_progress(engine, job_id, st, f),
                         on_clip=store_clip, **options)
     except Exception as exc:  # the job fails, the worker keeps going
@@ -93,7 +99,10 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
         with Session() as s:
             job = s.get(Job, job_id)
             job.status, job.stage, job.finished_at = "failed", "failed", utcnow()
-            job.error = f"{type(exc).__name__}: {exc}"[:2000] + "\n" + traceback.format_exc()[-2000:]
+            from clipmaker.fetch import FetchError
+
+            prefix = "" if isinstance(exc, FetchError) else f"{type(exc).__name__}: "  # user-safe message
+            job.error = f"{prefix}{exc}"[:2000] + "\n" + traceback.format_exc()[-2000:]
             s.commit()
         return "failed"
     with Session() as s:

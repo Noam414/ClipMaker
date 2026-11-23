@@ -66,7 +66,8 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [x] Render the clips in parallel (one ffmpeg per core) with a faster x264 preset; check quality on the contact sheets (D-017)
 - [x] Results appear as they come: each clip shows up in the gallery as soon as it's rendered (`on_clip` callback, `clips_ready` in `/api/jobs/<id>`)
 - [x] URL import of direct media links (`http(s)://…/video.mp4`) in the CLI: size and length limits, block private/internal addresses incl. on redirects (SSRF) (D-018)
-- [ ] URL import in the web app: a "paste a link" field next to upload; the download runs in the job with progress; pin the checked IP to close DNS rebinding
+- [x] URL import in the web app: a "paste a link" field next to upload; the download runs in the job with progress (`POST /api/projects/link`; YouTube/Twitch links get a clear "not yet" until the item below)
+- [ ] Pin the checked IP for link downloads to close DNS rebinding (before the public server goes live)
 - [ ] HLS `.m3u8` links: check every playlist/segment URL with the same SSRF rules (ffmpeg `-protocol_whitelist` + a checked fetch)
 - [ ] Audio-only fetch from the link: for HLS/DASH sources with a separate audio track, download only the audio; for a single MP4 file, stream the audio with ffmpeg without saving the video
 - [ ] Fetch only the selected video ranges from the link (ffmpeg `-ss`/`-to` over HTTP range requests); eval test with a local HTTP server that counts bytes served

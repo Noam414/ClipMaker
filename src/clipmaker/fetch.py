@@ -83,8 +83,12 @@ class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def download(url: str, dest: Path, max_bytes: int = MAX_BYTES, max_seconds: float = MAX_SECONDS) -> Path:
-    """Download `url` to `dest` within the limits, then check it's a video of allowed length."""
+def download(url: str, dest: Path, max_bytes: int = MAX_BYTES, max_seconds: float = MAX_SECONDS,
+             progress=None) -> Path:
+    """Download `url` to `dest` within the limits, then check it's a video of allowed length.
+
+    `progress(fraction)` is called while streaming when the server sends a Content-Length.
+    """
     check_url(url)
     opener = urllib.request.build_opener(_CheckedRedirects())
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -103,6 +107,8 @@ def download(url: str, dest: Path, max_bytes: int = MAX_BYTES, max_seconds: floa
                     if total > max_bytes:
                         raise FetchError(f"The file is too big (limit {max_bytes // 1024 ** 2} MB).")
                     fh.write(chunk)
+                    if progress and length and length.isdigit() and int(length) > 0:
+                        progress(min(1.0, total / int(length)))
     except FetchError:
         tmp.unlink(missing_ok=True)
         raise

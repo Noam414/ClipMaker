@@ -64,3 +64,39 @@ def test_upload_to_gallery_in_browser(live_server, manifest):
         page.goto(live_server + "/")
         assert page.locator("#recent a", has_text="portrait_short").count() == 1
         browser.close()
+
+
+def test_paste_link_to_gallery_in_browser(live_server, manifest, monkeypatch, tmp_path):
+    import functools
+    import http.server
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    video = FIXTURES / "portrait_short.mp4"
+    if not video.is_file():
+        pytest.skip("portrait_short fixture missing")
+    monkeypatch.setenv("CLIPMAKER_ALLOW_PRIVATE_URLS", "1")  # the fake media host is on localhost
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(FIXTURES))
+    handler.log_message = lambda *a: None
+    media = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=media.serve_forever, daemon=True).start()
+    try:
+        with sync_api.sync_playwright() as p:
+            try:
+                browser = p.chromium.launch()
+            except Exception as exc:
+                pytest.skip(f"chromium unavailable: {exc}")
+            page = browser.new_page()
+            page.goto(live_server + "/")
+            page.fill("#url", f"http://127.0.0.1:{media.server_address[1]}/portrait_short.mp4")
+            page.click("#go-link")
+            page.wait_for_url("**/projects/*", timeout=240_000)
+            page.wait_for_selector("article.card video", timeout=10_000)
+            page.goto(live_server + "/")
+            assert page.locator("#recent a", has_text="portrait_short").count() == 1
+            page.fill("#url", "https://www.youtube.com/watch?v=x")
+            page.click("#go-link")
+            page.wait_for_function("document.getElementById('error').textContent.includes('YouTube')")
+            page.screenshot(path=str(tmp_path.parent / "home_link_error.png"))
+            browser.close()
+    finally:
+        media.shutdown()

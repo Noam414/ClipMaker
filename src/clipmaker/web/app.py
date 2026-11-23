@@ -8,7 +8,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -80,6 +80,32 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
                 out.write(chunk)
         job = enqueue(engine, pid)
         return {"project_id": pid, "job_id": job.id, "name": Path(name).stem, "bytes": size}
+
+    @app.post("/api/projects/link", status_code=201)
+    def import_link(url: str = Body(..., embed=True)) -> dict:
+        from clipmaker.fetch import FetchError, check_url, filename_from_url, is_url
+        from clipmaker.platforms import platform_of
+
+        url = url.strip()
+        if not is_url(url):
+            raise HTTPException(400, "Paste a link that starts with http:// or https://.")
+        if platform_of(url):
+            raise HTTPException(400, "YouTube and Twitch links aren't supported yet. "
+                                     "Download the video and upload the file instead.")
+        try:
+            check_url(url)  # fail fast; the download re-checks every redirect
+        except FetchError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        name = filename_from_url(url)
+        ext = Path(name).suffix.lower() if Path(name).suffix.lower() in VIDEO_EXTS else ".mp4"
+        with Session() as s:
+            project = Project(name=Path(name).stem, source_file=f"source{ext}")
+            s.add(project)
+            s.commit()
+            pid = project.id
+        project_dir(settings.data_dir, pid).mkdir(parents=True, exist_ok=True)
+        job = enqueue(engine, pid, {"source_url": url})
+        return {"project_id": pid, "job_id": job.id, "name": Path(name).stem}
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: int) -> dict:

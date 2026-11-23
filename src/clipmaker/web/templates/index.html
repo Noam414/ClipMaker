@@ -14,6 +14,9 @@
     h2 { margin: 32px 0 0; font-size: 1.1rem; }
     p { color: var(--muted); line-height: 1.5; }
     form { background: var(--panel); border: 2px dashed #2c313c; border-radius: 12px; padding: 24px; text-align: center; }
+    form.link { margin-top: 12px; border-style: solid; }
+    input[type=url] { display: block; width: 100%; box-sizing: border-box; margin: 12px 0; padding: 10px; border-radius: 8px;
+                      border: 1px solid #2c313c; background: transparent; color: inherit; font: inherit; }
     form.drag { border-color: var(--accent); }
     input[type=file] { display: block; margin: 12px auto; color: var(--muted); max-width: 100%; }
     button { background: var(--accent); color: #111; border: 0; border-radius: 8px; padding: 10px 20px; font-weight: 700; cursor: pointer; }
@@ -37,6 +40,11 @@
       <strong>Drop a video here or choose a file</strong>
       <input type="file" id="file" name="file" accept="video/*">
       <button id="go" type="submit">Make clips</button>
+    </form>
+    <form id="link" class="link">
+      <strong>…or paste a link to a video file</strong>
+      <input type="url" id="url" name="url" placeholder="https://example.com/talk.mp4" required>
+      <button id="go-link" type="submit">Import link</button>
     </form>
     <section id="status" hidden>
       <div id="label">Uploading…</div>
@@ -70,7 +78,7 @@
         location.href = `/projects/${projectId}`; return;  // first clip is ready: the gallery fills in from here
       }
       if (job.status !== "done") {
-        show(job.status === "queued" ? "Waiting in queue…" : `Working: ${job.stage}`, job.progress);
+        show(job.status === "queued" ? "Waiting in queue…" : job.stage === "download" ? `Downloading the video… ${Math.round(100 * job.progress)}%` : `Working: ${job.stage}`, job.progress);
         setTimeout(() => poll(jobId, projectId), 1000); return;
       }
       show("Done", 1);
@@ -91,6 +99,16 @@
       xhr.onerror = () => { show("Upload failed", 0); $("go").disabled = false; };
       xhr.send(data);
     }
+    $("link").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("go-link").disabled = true; $("error").textContent = "";
+      show("Checking the link…", 0);
+      const r = await fetch("/api/projects/link", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                    body: JSON.stringify({url: $("url").value})});
+      const body = await r.json();
+      if (!r.ok) { show("Can't import this link", 1); $("error").textContent = body.detail || "Error"; $("go-link").disabled = false; return; }
+      poll(body.job_id, body.project_id);
+    });
     form.addEventListener("submit", (e) => { e.preventDefault(); upload(fileInput.files[0]); });
     form.addEventListener("dragover", (e) => { e.preventDefault(); form.classList.add("drag"); });
     form.addEventListener("dragleave", () => form.classList.remove("drag"));
