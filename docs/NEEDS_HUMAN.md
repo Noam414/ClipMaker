@@ -51,6 +51,14 @@ re-checks open items every night and moves resolved ones to the bottom.
   ```
 - **Agent check:** `curl -sI https://www.youtube.com` returns 200 or 3xx.
 
+### H-007: (When the server is up) Help ClipMaker past YouTube's "confirm you're not a bot" (D-019)
+- **Why:** YouTube often blocks downloads from cloud servers like the Oracle one. ClipMaker can use three helpers; the first is free and needs no account, the other two need you.
+- **Step 1 — nothing to do now:** the M7 deploy kit will run the free PO-token provider (Docker image `brainicism/bgutil-ytdlp-pot-provider`) next to ClipMaker and set `CLIPMAKER_YTDLP_POT_URL`. Try YouTube links on the live site first with only this.
+- **Step 2 — only if links still fail with the bot message:** create a **separate** Google account just for this (YouTube may flag or ban it — never use your main account). Sign in to YouTube with it in a private browser window, export cookies for youtube.com in Netscape format (e.g. with the open-source "Get cookies.txt LOCALLY" extension), then close that window without signing out. Copy the file to the server (e.g. `/data/secrets/youtube-cookies.txt`, readable only by ClipMaker), set `CLIPMAKER_YTDLP_COOKIES` to that path in the server's `.env`, and **never commit it to git**. Cookies expire after weeks or months; repeat when the bot message returns.
+- **Step 3 — last resort, costs money:** a residential proxy service; put its URL in `CLIPMAKER_YTDLP_PROXY`. Tell the agent here before buying anything.
+- **Check:** on the server, `clipmaker platform-check` should print no `problem:` lines.
+- **Agent check:** this section says which steps were done.
+
 ## Resolved
 
 ### H-005: Which links should the site accept? — resolved 2026-11-21

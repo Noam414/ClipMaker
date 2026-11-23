@@ -2,6 +2,7 @@
 
     clipmaker serve [--host H] [--port P]   run the web app
     clipmaker probe <file>                  print media info as JSON
+    clipmaker platform-check                show the YouTube/Twitch (yt-dlp) anti-bot setup
     clipmaker <input.mp4> --out <dir>       make clips (pipeline; grows through M1)
 """
 from __future__ import annotations
@@ -30,6 +31,28 @@ def _serve(argv: list[str]) -> int:
 
     uvicorn.run(create_app(settings), host=args.host, port=args.port)
     return 0
+
+
+def _platform_check(argv: list[str]) -> int:
+    from clipmaker.platforms import diagnose
+
+    report = diagnose()
+    print(json.dumps(report, indent=2))
+    problems = []
+    if not report["yt_dlp"]:
+        problems.append("yt-dlp isn't installed: pip install yt-dlp")
+    if report["pot_server"] is False:
+        problems.append("CLIPMAKER_YTDLP_POT_URL is set but the PO-token server doesn't answer /ping")
+    if report["pot_server"] and not report["pot_plugin"]:
+        problems.append("PO-token server is up but the plugin is missing: pip install bgutil-ytdlp-pot-provider")
+    if report["cookies"] is False:
+        problems.append("CLIPMAKER_YTDLP_COOKIES points to a missing file")
+    if not report["js_runtime_found"]:
+        problems.append(f"JavaScript runtime {report['js_runtime']!r} not found; YouTube needs one "
+                        "(set CLIPMAKER_YTDLP_JS_RUNTIME=node if Node is installed)")
+    for line in problems:
+        print("problem:", line, file=sys.stderr)
+    return 1 if problems else 0
 
 
 def _probe(argv: list[str]) -> int:
@@ -87,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "serve":
         return _serve(argv[1:])
+    if argv and argv[0] == "platform-check":
+        return _platform_check(argv[1:])
     if argv and argv[0] == "probe":
         return _probe(argv[1:])
     if argv and argv[0] in ("--version", "-V"):

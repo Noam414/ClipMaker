@@ -18,6 +18,7 @@ dependencies = [
     "numpy>=1.26",
     "opencv-python-headless>=4.8",
     "sherpa-onnx>=1.10",
+    "yt-dlp>=2026.10.26",  # YouTube/Twitch links (D-014, D-019); Unlicense
 ]
 
 [project.optional-dependencies]
