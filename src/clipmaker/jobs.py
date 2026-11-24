@@ -87,7 +87,17 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
 
     try:
         url = options.pop("source_url", None)
-        if url:  # a pasted link: download it inside the job, with progress (M5.5)
+        options.pop("rights_confirmed", None)  # recorded on the job; not a pipeline option
+        from clipmaker.platforms import platform_of
+
+        if url and platform_of(url):  # YouTube/Twitch: audio first, then only the clips' video
+            from clipmaker.media import probe
+            from clipmaker.platforms import fetch_audio, section_source
+
+            _set_progress(engine, job_id, "download audio", 0.0)
+            source = fetch_audio(url, pdir / "download")
+            options["video_source"] = section_source(url, pdir / "sections", probe(source).duration)
+        elif url:  # a pasted direct link: download it inside the job, with progress (M5.5)
             from clipmaker.fetch import download
 
             _set_progress(engine, job_id, "download", 0.0)

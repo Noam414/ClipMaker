@@ -82,16 +82,29 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         return {"project_id": pid, "job_id": job.id, "name": Path(name).stem, "bytes": size}
 
     @app.post("/api/projects/link", status_code=201)
-    def import_link(url: str = Body(..., embed=True)) -> dict:
+    def import_link(url: str = Body(...), rights: bool = Body(False)) -> dict:
         from clipmaker.fetch import FetchError, check_url, filename_from_url, is_url
-        from clipmaker.platforms import platform_of
+        from clipmaker.platforms import platform_link_ok, platform_of
 
         url = url.strip()
         if not is_url(url):
             raise HTTPException(400, "Paste a link that starts with http:// or https://.")
-        if platform_of(url):
-            raise HTTPException(400, "YouTube and Twitch links aren't supported yet. "
-                                     "Download the video and upload the file instead.")
+        platform = platform_of(url)
+        if platform:
+            if not rights:
+                raise HTTPException(400, "Tick “I own this video or have the rights to use it” "
+                                         "to import a YouTube or Twitch link.")
+            if not platform_link_ok(url):
+                raise HTTPException(400, "This doesn't look like a link to one video or VOD. "
+                                         "Paste the link of a single video, VOD or clip.")
+            with Session() as s:
+                project = Project(name=f"{platform.title()} video", source_file="download/audio")
+                s.add(project)
+                s.commit()
+                pid = project.id
+            project_dir(settings.data_dir, pid).mkdir(parents=True, exist_ok=True)
+            job = enqueue(engine, pid, {"source_url": url, "rights_confirmed": True})
+            return {"project_id": pid, "job_id": job.id, "name": f"{platform.title()} video"}
         try:
             check_url(url)  # fail fast; the download re-checks every redirect
         except FetchError as exc:

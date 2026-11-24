@@ -105,3 +105,47 @@ def test_import_link_rejects_bad_links(tmp_path, monkeypatch):
                         ("http://127.0.0.1:9/a.mp4", "private or internal")]:
         r = client.post("/api/projects/link", json={"url": url})
         assert r.status_code == 400 and needle in r.json()["detail"], (url, r.text)
+    r = client.post("/api/projects/link", json={"url": "https://www.youtube.com/@somechannel", "rights": True})
+    assert r.status_code == 400 and "single video" in r.json()["detail"]
+
+
+def test_platform_link_audio_first_then_sections(tmp_path, monkeypatch):
+    """A YouTube link: audio is fetched first, the runner gets a per-clip video source."""
+    import clipmaker.media
+    import clipmaker.platforms as platforms
+    from clipmaker.jobs import project_dir
+
+    fetched, calls, stages = [], [], []
+
+    def fake_audio(url, dest_dir, config=None, **kw):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        (dest_dir / "audio.m4a").write_bytes(b"x")
+        fetched.append(url)
+        return dest_dir / "audio.m4a"
+
+    monkeypatch.setattr(platforms, "fetch_audio", fake_audio)
+    monkeypatch.setattr(clipmaker.media, "probe", lambda p: type("I", (), {"duration": 120.0})())
+    monkeypatch.setattr(platforms, "fetch_section",
+                        lambda url, a, b, dest, config=None: calls.append((url, a, b)) or dest)
+
+    def runner(src, out, progress=None, on_clip=None, video_source=None, **opts):
+        assert "rights_confirmed" not in opts and "source_url" not in opts
+        path, off = video_source({"id": "clip_01", "start": 10.0, "end": 119.5})
+        assert off == 8.0 and path.name == "clip_01_source.mp4"
+        calls.append(src)
+        return {"clips": []}
+
+    settings = Settings(database_url=f"sqlite:///{(tmp_path / 't.db').as_posix()}", data_dir=tmp_path,
+                        cache_dir=tmp_path / "cache", host="127.0.0.1", port=0, worker=False)
+    app = create_app(settings, runner=runner)
+    client = TestClient(app)
+    url = "https://www.youtube.com/watch?v=abc123"
+    r = client.post("/api/projects/link", json={"url": url, "rights": True})
+    assert r.status_code == 201, r.text
+    import clipmaker.jobs as jobs
+    orig = jobs._set_progress
+    monkeypatch.setattr(jobs, "_set_progress", lambda e, j, st, f: (stages.append(st), orig(e, j, st, f)))
+    assert app.state.worker.run_once() == "done"
+    pdir = project_dir(tmp_path, r.json()["project_id"])
+    assert fetched == [url] and "download audio" in stages
+    assert calls == [(url, 8.0, 120.0), pdir / "download" / "audio.m4a"]  # end clamped to duration

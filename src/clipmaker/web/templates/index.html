@@ -15,6 +15,7 @@
     p { color: var(--muted); line-height: 1.5; }
     form { background: var(--panel); border: 2px dashed #2c313c; border-radius: 12px; padding: 24px; text-align: center; }
     form.link { margin-top: 12px; border-style: solid; }
+    label.rights { display: block; margin: 8px 0; font-size: 14px; }
     input[type=url] { display: block; width: 100%; box-sizing: border-box; margin: 12px 0; padding: 10px; border-radius: 8px;
                       border: 1px solid #2c313c; background: transparent; color: inherit; font: inherit; }
     form.drag { border-color: var(--accent); }
@@ -42,8 +43,9 @@
       <button id="go" type="submit">Make clips</button>
     </form>
     <form id="link" class="link">
-      <strong>…or paste a link to a video file</strong>
-      <input type="url" id="url" name="url" placeholder="https://example.com/talk.mp4" required>
+      <strong>…or paste a link (a video file, YouTube or Twitch)</strong>
+      <input type="url" id="url" name="url" placeholder="https://www.youtube.com/watch?v=…" required>
+      <label class="rights"><input type="checkbox" id="rights"> I own this video or have the rights to use it</label>
       <button id="go-link" type="submit">Import link</button>
     </form>
     <section id="status" hidden>
@@ -104,7 +106,7 @@
       $("go-link").disabled = true; $("error").textContent = "";
       show("Checking the link…", 0);
       const r = await fetch("/api/projects/link", {method: "POST", headers: {"Content-Type": "application/json"},
-                                                    body: JSON.stringify({url: $("url").value})});
+                                                    body: JSON.stringify({url: $("url").value, rights: $("rights").checked})});
       const body = await r.json();
       if (!r.ok) { show("Can't import this link", 1); $("error").textContent = body.detail || "Error"; $("go-link").disabled = false; return; }
       poll(body.job_id, body.project_id);

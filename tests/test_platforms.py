@@ -145,3 +145,26 @@ def test_platform_check_cli(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("CLIPMAKER_YTDLP_COOKIES", str(tmp_path / "missing.txt"))
     assert main(["platform-check"]) == 1
     assert "missing file" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("url,ok", [
+    ("https://www.youtube.com/watch?v=abc", True), ("https://youtu.be/dQw4w9WgXcQ", True),
+    ("https://www.youtube.com/shorts/abc", True), ("https://www.youtube.com/@chan", False),
+    ("https://www.youtube.com/playlist?list=x", False), ("https://www.youtube.com/watch", False),
+    ("https://www.twitch.tv/videos/123", True), ("https://www.twitch.tv/user/clip/Abc-1", True),
+    ("https://clips.twitch.tv/Name", True), ("https://www.twitch.tv/user", False),
+    ("https://cdn.example.com/a.mp4", False),
+])
+def test_platform_link_ok(url, ok):
+    from clipmaker.platforms import platform_link_ok
+
+    assert platform_link_ok(url) is ok
+
+
+def test_cli_platform_link_needs_rights(tmp_path, capsys):
+    from clipmaker.cli import main
+
+    assert main(["https://youtu.be/abcdefg", "--out", str(tmp_path)]) == 2
+    assert "--rights" in capsys.readouterr().err
+    assert main(["https://www.twitch.tv/someone", "--rights", "--out", str(tmp_path)]) == 2
+    assert "single video" in capsys.readouterr().err

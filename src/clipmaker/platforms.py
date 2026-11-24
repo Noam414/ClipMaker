@@ -68,6 +68,32 @@ def platform_of(url: str) -> str | None:
     return None
 
 
+_VIDEO_PATHS = {
+    "youtube": (r"/shorts/[\w-]+", r"/live/[\w-]+", r"/embed/[\w-]+"),
+    "twitch": (r"/videos/\d+", r"/[\w-]+/clip/[\w-]+"),
+}
+
+
+def platform_link_ok(url: str) -> bool:
+    """True for a link to one video/VOD/clip (not a channel, playlist or search page)."""
+    import re
+
+    parts = urllib.parse.urlsplit(str(url))
+    host, path = (parts.hostname or "").lower(), parts.path.rstrip("/") or "/"
+    name = platform_of(url)
+    if name == "youtube":
+        if host.endswith("youtu.be"):
+            return re.fullmatch(r"/[\w-]{6,}", path) is not None
+        if path == "/watch":
+            return bool(urllib.parse.parse_qs(parts.query).get("v"))
+        return any(re.fullmatch(p, path) for p in _VIDEO_PATHS["youtube"])
+    if name == "twitch":
+        if host == "clips.twitch.tv":
+            return re.fullmatch(r"/[\w-]+", path) is not None
+        return any(re.fullmatch(p, path) for p in _VIDEO_PATHS["twitch"])
+    return False
+
+
 @dataclass
 class YtdlpConfig:
     pot_url: str | None = None
@@ -161,6 +187,61 @@ def fetch_audio(url: str, dest_dir: Path, config: YtdlpConfig | None = None,
         out.unlink(missing_ok=True)
         raise FetchError(f"The video is too long (limit {int(max_seconds // 60)} minutes).")
     return out
+
+
+SECTION_PAD_S = 2.0
+SECTION_FORMAT = "bv*[height<=1080]+ba/b[height<=1080]/b"
+
+
+def fetch_section(url: str, start: float, end: float, dest: Path, config: YtdlpConfig | None = None,
+                  max_bytes: int = MAX_BYTES) -> Path:
+    """Download only [start, end) of a platform video (video + audio) into `dest` (.mp4).
+
+    `--force-keyframes-at-cuts` makes the cut frame-accurate, so the file's t=0 is exactly
+    `start` in the source (checked by PSNR against a local cut, D-020). Without it yt-dlp
+    copies from the previous keyframe and the offset would be unknown.
+    """
+    config = config or YtdlpConfig.from_env()
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    cookies_copy = None
+    if config.cookies_file:
+        if not config.cookies_file.is_file():
+            raise FetchError("The configured cookies file is missing (CLIPMAKER_YTDLP_COOKIES).")
+        cookies_copy = dest.parent / f".{dest.stem}.cookies.txt"
+        shutil.copyfile(config.cookies_file, cookies_copy)
+    cmd = [sys.executable, "-m", "yt_dlp", *ytdlp_args(config, cookies_copy),
+           "-f", SECTION_FORMAT, "--merge-output-format", "mp4", "--max-filesize", str(max_bytes),
+           "--download-sections", f"*{start:.3f}-{end:.3f}", "--force-keyframes-at-cuts",
+           "-o", str(dest.with_suffix("")) + ".%(ext)s", "--no-progress",
+           "--print", "after_move:filepath", "--", url]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
+    except subprocess.TimeoutExpired as exc:
+        raise FetchError("Downloading a clip's video took too long. Upload the file instead.") from exc
+    finally:
+        if cookies_copy:
+            cookies_copy.unlink(missing_ok=True)
+    lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+    if proc.returncode != 0 or not lines or not Path(lines[-1]).is_file():
+        raise FetchError(friendly_error(proc.stderr))
+    return Path(lines[-1])
+
+
+def section_source(url: str, dest_dir: Path, duration: float | None = None,
+                   config: YtdlpConfig | None = None, pad: float = SECTION_PAD_S):
+    """A `video_source` for run_pipeline: fetches each selected clip's range (+ `pad` s on
+    both sides) and returns (local file, its start time in the source)."""
+    dest_dir = Path(dest_dir)
+
+    def source(clip: dict) -> tuple[Path, float]:
+        a = max(0.0, float(clip["start"]) - pad)
+        b = float(clip["end"]) + pad
+        if duration:
+            b = min(b, float(duration))
+        return fetch_section(url, a, b, dest_dir / f"{clip['id']}_source.mp4", config), a
+
+    return source
 
 
 def diagnose(config: YtdlpConfig | None = None) -> dict:

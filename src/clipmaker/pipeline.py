@@ -34,10 +34,16 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                  caption_style: str = "bold", keywords: bool = True, emoji: bool = False,
                  hook_title: bool = True, progress_bar: bool = True, zoom: bool = True,
                  progress: Callable[[str, float], None] | None = None,
-                 on_clip: Callable[[dict], None] | None = None) -> dict:
+                 on_clip: Callable[[dict], None] | None = None,
+                 video_source: Callable[[dict], tuple[Path, float]] | None = None) -> dict:
     """`progress(stage, fraction)` is called as the stages advance (fraction 0..1).
     `on_clip(clip)` is called with each clip's clips.json entry as soon as that clip is
-    rendered (from the calling thread), so a UI can show clips one by one."""
+    rendered (from the calling thread), so a UI can show clips one by one.
+
+    `video_source(clip)` (M5.5 sections mode): `input_path` is then audio only, and the
+    video of each selected clip comes from `video_source`, which returns a local file and
+    that file's start time in the source (e.g. a platform link's padded section). Scene
+    detection, reframing and render then run on that file, with times shifted back."""
     started = time.perf_counter()
     report = progress or (lambda stage, frac: None)
     report("probe", 0.0)
@@ -85,7 +91,7 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 "duration": round(c.duration, 3), "text": c.text, "score": c.score,
                 "score_parts": parts[id(c)],
             })
-    if info.has_video:
+    if info.has_video and not video_source:
         # D-013 order: clips are chosen from the audio/transcript alone, so scene detection
         # only decodes the chosen ranges (+ padding). Without clips (no speech) the whole
         # video is scanned, so scene cuts are still reported.
@@ -99,7 +105,10 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         result["scene_cuts_scope"] = "clips" if spans else "full"
         result["timings"]["scenes_seconds"] = round(time.perf_counter() - t0, 3)
     t0 = time.perf_counter()
-    if render and result["clips"] and info.has_video:
+    if video_source:
+        result["scene_cuts"], result["scene_cuts_scope"] = [], "sections"
+        result["video_source"] = "sections"
+    if render and result["clips"] and (info.has_video or video_source):
         from clipmaker.captions import caption_keywords, clip_words, group_words, write_ass
         from clipmaker.keywords import hook_title as make_title
         from clipmaker.keywords import PUNCH_IN_SCALE, punch_ins, zoom_expression
@@ -107,8 +116,8 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
         from clipmaker.trim import kept_ranges, output_duration, remap_words
 
         from clipmaker.reframe import FaceDetector, plan_reframe
+        from clipmaker.scenes import detect_scene_cuts
 
-        crop = center_crop(info.width, info.height)
         cuts = result["scene_cuts"] or []
         all_words = [w for seg in result["transcript"]["segments"] for w in seg["words"]]
         local = threading.local()  # one face detector per worker: cv2 detectors aren't thread-safe
@@ -118,6 +127,18 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 local.detector = FaceDetector()
             detector = getattr(local, "detector", None)
             name = f"{clip['id']}.mp4"
+            t_fetch = time.perf_counter()
+            if video_source:  # sections mode: this clip's video only, starting at `off`
+                src, off = video_source(clip)
+                src, off = Path(src), float(off)
+                vinfo = probe(src)
+                clip_cuts = [round(t + off, 3) for t in detect_scene_cuts(src)]
+                result["scene_cuts"].extend(clip_cuts)  # list.extend is atomic under the GIL
+                clip["source_offset"] = round(off, 3)
+            else:
+                src, off, vinfo, clip_cuts = input_path, 0.0, info, cuts
+            fetch_seconds = time.perf_counter() - t_fetch
+            crop = center_crop(vinfo.width, vinfo.height)
             ranges = kept_ranges(result["transcript"]["segments"], clip["start"], clip["end"]) \
                 if remove_dead_air else [[clip["start"], clip["end"]]]
             subs = None
@@ -139,19 +160,24 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 clip["caption_style"] = caption_style
                 clip["caption_keywords"] = caption_keywords(caps) if (keywords or emoji) else []
             t_clip = time.perf_counter()
-            plan = plan_reframe(input_path, clip["start"], clip["end"], info.width, info.height, crop,
-                                cuts, detector) if reframe else None
+            s0, s1 = clip["start"] - off, clip["end"] - off  # times inside `src`
+            plan = plan_reframe(src, s0, s1, vinfo.width, vinfo.height, crop,
+                                [c - off for c in clip_cuts], detector) if reframe else None
             t_render = time.perf_counter()
-            render_clip(input_path, out_dir / name, clip["start"], clip["end"],
-                        plan.crop if plan else crop, subtitles=subs, ranges=ranges,
-                        xy=plan.filter_xy(clip["start"]) if plan else None,
-                        zoom=zoom_expr, fps=info.fps)
+            render_clip(src, out_dir / name, s0, s1,
+                        plan.crop if plan else crop, subtitles=subs,
+                        ranges=[[a - off, b - off] for a, b in ranges],
+                        xy=plan.filter_xy(s0) if plan else None,
+                        zoom=zoom_expr, fps=vinfo.fps)
             clip["timings"] = {"reframe_seconds": round(t_render - t_clip, 3),
                                "encode_seconds": round(time.perf_counter() - t_render, 3)}
+            if video_source:
+                clip["timings"]["fetch_seconds"] = round(fetch_seconds, 3)
             clip["output_duration"] = round(output_duration(ranges), 3)
             clip["file"] = name
             clip["kept_ranges"] = ranges
-            clip["crop_track"] = plan.track() if plan else [[clip["start"], crop.x, crop.y, crop.w, crop.h]]
+            track = plan.track() if plan else [[s0, crop.x, crop.y, crop.w, crop.h]]
+            clip["crop_track"] = [[round(row[0] + off, 3), *row[1:]] for row in track]
             clip["reframe"] = f"follow-{plan.axis}:{plan.source}" if plan and plan.axis else "static"
 
         # Clips render in parallel (M5.5): ffmpeg's filter chain is mostly single-threaded,
@@ -168,6 +194,8 @@ def run_pipeline(input_path: str | Path, out_dir: str | Path, language: str | No
                 if on_clip:
                     on_clip(futures[fut])
                 report(f"render {done}/{len(clips)}", 0.55 + 0.43 * done / len(clips))
+    if video_source and result["scene_cuts"]:
+        result["scene_cuts"] = sorted(set(result["scene_cuts"]))
     result["timings"]["render_seconds"] = round(time.perf_counter() - t0, 3)
     result["timings"]["total_seconds"] = round(time.perf_counter() - started, 3)
     (out_dir / "clips.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")

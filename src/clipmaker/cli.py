@@ -67,7 +67,10 @@ def _probe(argv: list[str]) -> int:
 
 def _process(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="clipmaker", description="Turn a long video into short vertical clips.")
-    parser.add_argument("input", help="input video file, or a direct http(s) link to one")
+    parser.add_argument("input", help="input video file, a direct http(s) link to one, "
+                                      "or a YouTube/Twitch video link (with --rights)")
+    parser.add_argument("--rights", action="store_true",
+                        help="confirm you own the linked YouTube/Twitch video or have the rights to use it")
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--language", default=None, help="speech language code, e.g. en or he (default: auto-detect)")
     parser.add_argument("--no-transcribe", action="store_true", help="skip speech-to-text")
@@ -90,7 +93,28 @@ def _process(argv: list[str]) -> int:
     source = args.input
     from clipmaker.fetch import FetchError, download, filename_from_url, is_url
 
-    if is_url(source):
+    from clipmaker.platforms import platform_link_ok, platform_of
+
+    video_source = None
+    if is_url(source) and platform_of(source):
+        if not args.rights:
+            print("clipmaker: add --rights to confirm you own this video or have the rights to use it",
+                  file=sys.stderr)
+            return 2
+        if not platform_link_ok(source):
+            print("clipmaker: paste the link of a single video, VOD or clip", file=sys.stderr)
+            return 2
+        from clipmaker.media import probe
+        from clipmaker.platforms import fetch_audio, section_source
+
+        try:  # audio first; only the selected clips' video is downloaded later (M5.5)
+            url = source
+            source = fetch_audio(url, Path(args.out) / "source")
+            video_source = section_source(url, Path(args.out) / "source" / "sections", probe(source).duration)
+        except FetchError as exc:
+            print(f"clipmaker: {exc}", file=sys.stderr)
+            return 2
+    elif is_url(source):
         try:
             source = download(source, Path(args.out) / "source" / filename_from_url(source))
         except FetchError as exc:
@@ -101,7 +125,8 @@ def _process(argv: list[str]) -> int:
                           remove_dead_air=not args.keep_pauses, reframe=not args.static_crop,
                           caption_style=args.caption_style, keywords=not args.no_keywords,
                           emoji=args.emoji, hook_title=not args.no_title,
-                          progress_bar=not args.no_progress_bar, zoom=not args.no_zoom)
+                          progress_bar=not args.no_progress_bar, zoom=not args.no_zoom,
+                          video_source=video_source)
     print(json.dumps({"clips": len(result["clips"]), "out": str(args.out)}))
     return 0
 
