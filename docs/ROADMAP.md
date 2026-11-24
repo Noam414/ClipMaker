@@ -62,7 +62,7 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [x] Speed eval: a 10-min synthetic fixture, a `time_to_all_clips_s` metric with per-stage timings, and the value extrapolated to 60 min; target ≤ 300 s (`long_talk`, D-015)
 - [x] Reorder the pipeline: audio first (extract with `-vn`), transcribe and select clips from the audio alone; scene detection, face tracking and render only on the selected ranges (+2 s padding) (D-015)
 - [x] Faster transcription: benchmark Whisper tiny vs base and other sherpa-onnx models for English; choose by WER vs speed (Hebrew stays on Whisper) — Moonshine base for English, language ID when none is given (D-016)
-- [ ] Decode VAD chunks in batches (`decode_streams`) or in parallel workers, and re-measure on ARM (each recognizer already uses both cores)
+- [x] Decode VAD chunks in parallel workers (D-021: 2 single-threaded recognizers ~1.9x faster than 1 with 2 threads; `decode_streams` batching gave nothing). Re-measure on ARM in M7
 - [x] Render the clips in parallel (one ffmpeg per core) with a faster x264 preset; check quality on the contact sheets (D-017)
 - [x] Results appear as they come: each clip shows up in the gallery as soon as it's rendered (`on_clip` callback, `clips_ready` in `/api/jobs/<id>`)
 - [x] URL import of direct media links (`http(s)://…/video.mp4`) in the CLI: size and length limits, block private/internal addresses incl. on redirects (SSRF) (D-018)
@@ -72,7 +72,7 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [ ] Audio-only fetch from the link: for HLS/DASH sources with a separate audio track, download only the audio; for a single MP4 file, stream the audio with ffmpeg without saving the video
 - [ ] Fetch only the selected video ranges from the link (ffmpeg `-ss`/`-to` over HTTP range requests); eval test with a local HTTP server that counts bytes served
 - [x] **(owner request 2026-11-22, do first)** YouTube bot checks on server IPs: search GitHub (`gh api search/repositories`) for maintained tools that work with yt-dlp, e.g. PO-token provider plugins (such as `bgutil-ytdlp-pot-provider`), yt-dlp's cookie support (cookies from an account the owner controls), an optional proxy setting. Compare stars/activity/licence, pick one, record it in `DECISIONS.md`, add it behind config in the fetcher module, test it against the local fake site, and put whatever needs the owner (cookies, proxy account) in `NEEDS_HUMAN.md`. Out of scope: getting around the agent VM's own network block on youtube.com — that's only opened by the owner (H-006). Done: `platforms.py`, `clipmaker platform-check`, D-019, H-007
-- [ ] YouTube and Twitch links (owner decision H-005, D-014) through yt-dlp: audio-only format first, then only the selected sections (`--download-sections`); Twitch VODs and clips; a "I own or have the rights to this video" checkbox before processing
+- [x] YouTube and Twitch links (owner decision H-005, D-014) through yt-dlp: audio-only format first, then only the selected sections (`--download-sections`); Twitch VODs and clips; a "I own or have the rights to this video" checkbox before processing (D-020; CLI `--rights`; tested against a local site only, since youtube.com is blocked in the VM, H-006)
 - [ ] Platform-link fallbacks: clear error messages when a platform blocks the server ("upload the file instead"), retries, and a nightly-safe test with a local fake site (youtube.com/twitch.tv are blocked in the agent's VM)
 
 ## M5: Web app

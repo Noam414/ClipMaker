@@ -94,3 +94,28 @@ def test_language_is_detected_and_english_uses_moonshine(manifest, monkeypatch):
     tr = transcribe(FIXTURES / gt["file"])  # no language given
     assert tr.language == "en" and tr.model == "moonshine-base-int8"
     assert wer(" ".join(s["text"] for s in gt["speech_segments"]), tr.text) < 0.3
+
+
+def test_asr_workers_setting(monkeypatch):
+    from clipmaker.transcribe import _recognizer_threads, asr_workers
+
+    monkeypatch.setenv("CLIPMAKER_ASR_WORKERS", "3")
+    assert asr_workers(10) == 3 and asr_workers(2) == 2 and asr_workers(0) == 1
+    monkeypatch.setenv("CLIPMAKER_ASR_WORKERS", "junk")
+    assert 1 <= asr_workers(10) <= 4
+    assert _recognizer_threads(8) == 1
+
+
+@pytest.mark.skipif(not _models_available(), reason="whisper model not cached; set CLIPMAKER_TEST_MODELS=1 to download")
+def test_parallel_decoding_matches_one_worker(manifest, monkeypatch):
+    """Several recognizers in parallel give the same transcript, in the same order (D-021)."""
+    from clipmaker.transcribe import transcribe
+
+    from conftest import FIXTURES
+
+    path = FIXTURES / manifest["fixtures"]["two_speakers"]["file"]
+    monkeypatch.setenv("CLIPMAKER_ASR_WORKERS", "1")
+    one = transcribe(path, language="en").to_dict()
+    monkeypatch.setenv("CLIPMAKER_ASR_WORKERS", "2")
+    two = transcribe(path, language="en").to_dict()
+    assert one == two and len(one["segments"]) > 3

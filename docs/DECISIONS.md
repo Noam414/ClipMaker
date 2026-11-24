@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-021: Decode speech chunks with parallel single-threaded recognizers (2026-11-24)
+- Decision: `transcribe()` creates `CLIPMAKER_ASR_WORKERS` recognizers (default: one per core, max 4), each with `num_threads = cores // workers`, and decodes the VAD chunks through a thread pool; results keep chunk order. Applies to Moonshine and Whisper alike.
+- Alternatives considered: one recognizer with 2 threads (before: 7.5 s for 40 chunks of `long_talk`); sherpa-onnx `decode_streams` batches of 8 (7.5 s, no gain on CPU); 2 recognizers x 1 thread (**4.0 s**, identical text).
+- Why: the ONNX graphs barely scale across intra-op threads for short chunks, while independent recognizers use both cores fully. Eval: transcription on `long_talk` 41 → 25 s, extrapolated 60-min time 290 → 198 s, WER unchanged. Cost: the model is loaded once per worker (~+250 MB RAM for Moonshine base; fine on the 12 GB server) and a little more start-up time on very short videos.
+- How to reverse: `CLIPMAKER_ASR_WORKERS=1` restores one recognizer (it then gets all threads).
+
 ## D-020: Platform links: audio first, then each clip's video as a frame-accurate yt-dlp section (2026-11-24)
 - Decision: a YouTube/Twitch link is processed in "sections mode". `platforms.fetch_audio` downloads only the audio; the pipeline transcribes and picks clips from it; then for each selected clip `platforms.fetch_section` downloads only [start − 2 s, end + 2 s] with `--download-sections` and `--force-keyframes-at-cuts`, and that clip's scene detection, reframing and render run on the section with times shifted by its start (`run_pipeline(video_source=...)`). Each render worker fetches its own section, so downloads overlap with rendering. Only single-video links are accepted (`platform_link_ok`: watch/shorts/live/embed, youtu.be, Twitch VODs and clips; not channels, playlists or live channels), and the user must confirm rights (web checkbox, CLI `--rights`).
 - Alternatives considered: downloading the whole video (slow: a 60-min 1080p video is ~1–2 GB); sections without `--force-keyframes-at-cuts` (stream copy starts at the previous keyframe, so the file's offset in the source is unknown and captions/crop would drift); resolving the media URL with `yt-dlp -g` and cutting with our own ffmpeg (same keyframe problem, and the signed URLs expire).

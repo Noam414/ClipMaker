@@ -10,7 +10,9 @@ pause (the common case) land close to the real boundary.
 from __future__ import annotations
 
 import os
+import queue
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -123,6 +125,18 @@ def _threads() -> int:
     return max(1, min(4, os.cpu_count() or 1))
 
 
+def asr_workers(n_chunks: int) -> int:
+    """Parallel recognizers: `CLIPMAKER_ASR_WORKERS`, else one per core (max 4). Measured on
+    2 cores: 2 recognizers x 1 thread decode ~1.9x faster than 1 x 2 threads (D-021)."""
+    env = os.environ.get("CLIPMAKER_ASR_WORKERS", "").strip()
+    wanted = int(env) if env.isdigit() and int(env) > 0 else _threads()
+    return max(1, min(wanted, n_chunks))
+
+
+def _recognizer_threads(workers: int) -> int:
+    return max(1, _threads() // workers)
+
+
 def speech_sample(chunks, seconds: float = LID_SECONDS):
     """The first `seconds` of speech (VAD chunks joined), for language identification."""
     import numpy as np
@@ -152,7 +166,7 @@ def detect_language(samples, whisper_model: str = "base") -> str:
     return lid.compute(stream) or ""
 
 
-def _recognizer(engine: str, language: str | None):
+def _recognizer(engine: str, language: str | None, threads: int | None = None):
     """(sherpa-onnx recognizer, model label) for `engine` ("whisper-<size>" or "moonshine-<size>")."""
     import sherpa_onnx
 
@@ -164,12 +178,12 @@ def _recognizer(engine: str, language: str | None):
         rec = sherpa_onnx.OfflineRecognizer.from_moonshine(
             preprocessor=str(f["preprocessor"]), encoder=str(f["encoder"]),
             uncached_decoder=str(f["uncached_decoder"]), cached_decoder=str(f["cached_decoder"]),
-            tokens=str(f["tokens"]), num_threads=_threads())
+            tokens=str(f["tokens"]), num_threads=threads or _threads())
         return rec, f"moonshine-{size or 'base'}-int8"
     f = models.whisper(size)
     rec = sherpa_onnx.OfflineRecognizer.from_whisper(
         encoder=str(f["encoder"]), decoder=str(f["decoder"]), tokens=str(f["tokens"]),
-        language=language or "", task="transcribe", num_threads=_threads())
+        language=language or "", task="transcribe", num_threads=threads or _threads())
     return rec, f"whisper-{size}-int8"
 
 
@@ -193,13 +207,30 @@ def transcribe(path: str | Path, language: str | None = None, model: str | None 
     if language is None and chunks:
         language = detect_language(speech_sample(chunks), whisper_model) or None
     engine = f"whisper-{whisper_model}" if model else choose_engine(language, whisper_model)
-    recognizer, label = _recognizer(engine, language)
+    # Chunks are decoded by several single-threaded recognizers in parallel (D-021): the
+    # models' graphs don't scale well across threads, separate recognizers do.
+    workers = asr_workers(len(chunks))
+    threads = _recognizer_threads(workers)
+    recognizers = queue.SimpleQueue()
+    label = ""
+    for _ in range(workers):
+        rec, label = _recognizer(engine, language, threads)
+        recognizers.put(rec)
+
+    def decode(chunk) -> str:
+        rec = recognizers.get()
+        try:
+            stream = rec.create_stream()
+            stream.accept_waveform(SAMPLE_RATE, chunk[1])
+            rec.decode_stream(stream)
+            return stream.result.text.strip()
+        finally:
+            recognizers.put(rec)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        texts = list(pool.map(decode, chunks))  # in chunk order
     segments: list[Segment] = []
-    for start, samples in chunks:
-        stream = recognizer.create_stream()
-        stream.accept_waveform(SAMPLE_RATE, samples)
-        recognizer.decode_stream(stream)
-        text = stream.result.text.strip()
+    for (start, samples), text in zip(chunks, texts):
         if not text:
             continue
         end = start + len(samples) / SAMPLE_RATE
