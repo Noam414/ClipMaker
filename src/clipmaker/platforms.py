@@ -20,6 +20,7 @@ arbitrary hosts (the generic extractor stays off unless a caller asks for it in 
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -38,6 +39,7 @@ PLATFORM_HOSTS = {
 EXTRACTORS = ("youtube", "twitch")
 POT_PLUGIN_MODULE = "yt_dlp_plugins.extractor.getpot_bgutil_http"
 TIMEOUT_S = 30 * 60
+log = logging.getLogger(__name__)
 
 # yt-dlp error text -> message that is safe and useful to show users.
 _ERRORS = (
@@ -166,6 +168,7 @@ def fetch_audio(url: str, dest_dir: Path, config: YtdlpConfig | None = None,
         if cookies_copy:
             cookies_copy.unlink(missing_ok=True)
     if proc.returncode != 0:
+        log.warning("yt-dlp audio download failed (exit %s): %s", proc.returncode, proc.stderr[-3000:])
         raise FetchError(friendly_error(proc.stderr))
     lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     if not lines or not Path(lines[-1]).is_file():
@@ -224,6 +227,7 @@ def fetch_section(url: str, start: float, end: float, dest: Path, config: YtdlpC
             cookies_copy.unlink(missing_ok=True)
     lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     if proc.returncode != 0 or not lines or not Path(lines[-1]).is_file():
+        log.warning("yt-dlp section download failed (exit %s): %s", proc.returncode, proc.stderr[-3000:])
         raise FetchError(friendly_error(proc.stderr))
     return Path(lines[-1])
 
