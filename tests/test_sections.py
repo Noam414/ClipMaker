@@ -32,7 +32,9 @@ def site():
     srv.shutdown()
 
 
-LOCAL = YtdlpConfig(extractors=("generic",))  # production allows only youtube,twitch
+# production allows only youtube,twitch; --verbose puts yt-dlp's ffmpeg command and output
+# into the captured log if a download fails (CI: ffmpeg exit 183 on 2026-11-24, not seen locally)
+LOCAL = YtdlpConfig(extractors=("generic",), extra_args=["--verbose"])
 
 
 def _psnr(a, b) -> float:
