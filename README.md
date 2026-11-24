@@ -58,11 +58,14 @@ Moonshine base ~240 MB for English) and a small face detector (~230 KB) into `.c
 `CLIPMAKER_EN_ENGINE=whisper` uses Whisper for English too; `CLIPMAKER_WHISPER_MODEL=tiny` picks a smaller,
 less accurate Whisper.
 
-`clipmaker platform-check` shows the optional YouTube/Twitch (yt-dlp) settings — PO-token provider,
-cookies, proxy — from `.env.example`; platform links aren't wired into the pipeline yet.
+YouTube and Twitch links work too, for videos you own or have the rights to use:
+`clipmaker "https://www.youtube.com/watch?v=…" --rights --out clips`. Only the audio is downloaded first; after the
+clips are chosen, only each clip's part of the video (±2 s) is downloaded. `clipmaker platform-check` shows the
+optional anti-bot settings (PO-token provider, cookies, proxy) from `.env.example`. `CLIPMAKER_ASR_WORKERS`
+sets how many speech recognizers run in parallel (default: one per CPU core).
 
 **Web app:** `clipmaker serve`, then open http://127.0.0.1:8000, drop a video on the page (or paste a
-direct link to a video file) and watch the progress bar; the clips are listed (with links to the MP4s) when the job is done.
+direct link to a video file, or a YouTube/Twitch link and tick the rights box) and watch the progress bar; the clips are listed (with links to the MP4s) when the job is done.
 Uploads and clips are stored under `CLIPMAKER_DATA_DIR/projects/<id>/`. The web process runs
 one background worker; set `CLIPMAKER_WORKER=0` to turn it off. The database schema is created
 and upgraded automatically on start (Alembic migrations in `src/clipmaker/migrations`).
