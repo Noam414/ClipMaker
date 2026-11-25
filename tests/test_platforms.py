@@ -9,6 +9,7 @@ import pytest
 
 from clipmaker.fetch import FetchError
 from clipmaker.platforms import (YtdlpConfig, diagnose, fetch_audio, friendly_error, platform_of,
+                                 stderr_digest,
                                  ytdlp_args)
 
 pytest.importorskip("yt_dlp")
@@ -168,3 +169,17 @@ def test_cli_platform_link_needs_rights(tmp_path, capsys):
     assert "--rights" in capsys.readouterr().err
     assert main(["https://www.twitch.tv/someone", "--rights", "--out", str(tmp_path)]) == 2
     assert "single video" in capsys.readouterr().err
+
+
+def test_stderr_digest_drops_traceback_keeps_ffmpeg_lines():
+    err = ("[debug] ffmpeg command line: ffmpeg -ss 1 -i http://x\n"
+           "[in#0] Error opening input: Invalid data found when processing input\n"
+           "Traceback (most recent call last):\n"
+           + '  File "/x/yt_dlp/YoutubeDL.py", line 1, in f\n    f()\n' * 200
+           + "ERROR: ffmpeg exited with code 183\n")
+    out = stderr_digest(err)
+    assert "File \"" not in out and len(out) < 1000
+    assert "ffmpeg command line" in out and "Invalid data" in out and "code 183" in out
+    long = "\n".join(f"line {i}" for i in range(5000))
+    d = stderr_digest(long)
+    assert len(d) < 3100 and d.startswith("line 0") and d.endswith("line 4999")

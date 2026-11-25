@@ -1,9 +1,6 @@
 """Sections mode (M5.5): audio first, then only the selected clips' video, via yt-dlp
 `--download-sections` against a local HTTP server (platform sites are blocked in the VM)."""
-import functools
-import http.server
 import subprocess
-import threading
 
 import pytest
 
@@ -11,25 +8,19 @@ from clipmaker.media import probe
 from clipmaker.platforms import YtdlpConfig, fetch_section, section_source
 
 from conftest import FIXTURES
+from rangeserver import serve
 
 pytest.importorskip("yt_dlp")
 VIDEO = FIXTURES / "podcast_landscape.mp4"
-
-
-class _Quiet(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, *a):
-        pass
 
 
 @pytest.fixture(scope="module")
 def site():
     if not VIDEO.is_file():
         pytest.skip("fixtures missing; run python3 scripts/make_test_videos.py")
-    handler = functools.partial(_Quiet, directory=str(FIXTURES))
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}"
-    srv.shutdown()
+    # answers Range requests like real video hosts (a plain SimpleHTTPRequestHandler doesn't)
+    with serve(FIXTURES) as (url, _stats):
+        yield url
 
 
 # production allows only youtube,twitch; --verbose puts yt-dlp's ffmpeg command and output

@@ -132,6 +132,15 @@ def ytdlp_args(config: YtdlpConfig, cookies_copy: Path | None = None) -> list[st
     return args + list(config.extra_args)
 
 
+def stderr_digest(stderr: str, limit: int = 3000) -> str:
+    """yt-dlp's stderr for the log, without Python traceback frames (with --verbose they
+    filled the whole tail and hid ffmpeg's own error lines and command line)."""
+    keep = [ln for ln in stderr.splitlines()
+            if ln.strip() and not ln.startswith("  ") and not ln.startswith("Traceback")]
+    text = "\n".join(keep)
+    return text if len(text) <= limit else text[:limit // 3] + "\n…\n" + text[-(2 * limit) // 3:]
+
+
 def friendly_error(stderr: str) -> str:
     text = (stderr or "").lower()
     for needles, message in _ERRORS:
@@ -168,7 +177,7 @@ def fetch_audio(url: str, dest_dir: Path, config: YtdlpConfig | None = None,
         if cookies_copy:
             cookies_copy.unlink(missing_ok=True)
     if proc.returncode != 0:
-        log.warning("yt-dlp audio download failed (exit %s): %s", proc.returncode, proc.stderr[-3000:])
+        log.warning("yt-dlp audio download failed (exit %s): %s", proc.returncode, stderr_digest(proc.stderr))
         raise FetchError(friendly_error(proc.stderr))
     lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     if not lines or not Path(lines[-1]).is_file():
@@ -227,7 +236,7 @@ def fetch_section(url: str, start: float, end: float, dest: Path, config: YtdlpC
             cookies_copy.unlink(missing_ok=True)
     lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     if proc.returncode != 0 or not lines or not Path(lines[-1]).is_file():
-        log.warning("yt-dlp section download failed (exit %s): %s", proc.returncode, proc.stderr[-3000:])
+        log.warning("yt-dlp section download failed (exit %s): %s", proc.returncode, stderr_digest(proc.stderr))
         raise FetchError(friendly_error(proc.stderr))
     return Path(lines[-1])
 
