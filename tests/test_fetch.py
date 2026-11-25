@@ -94,14 +94,93 @@ def test_download_within_limits(server, tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["v.mp4"]  # no partial files left
 
 
-def test_redirect_to_internal_address_is_blocked(server, tmp_path, monkeypatch):
-    base, _ = server
-    monkeypatch.delenv("CLIPMAKER_ALLOW_PRIVATE_URLS", raising=False)
-    # "localhost" passes the check as if it were public; the redirect target 127.0.0.1 must not
-    monkeypatch.setattr(fetch, "_resolve", _fake_dns({"localhost": "93.184.216.34", "127.0.0.1": "127.0.0.1"}))
+FAKE_PUBLIC = "127.0.0.2"  # loopback, but treated as a public address in the pinned tests
+
+
+@pytest.fixture()
+def pinned(tiny_video, monkeypatch):
+    """Strict mode (no proxy, no private override) with a server on 127.0.0.2 that the
+    address check treats as public; returns (port, seen Host headers, dns table)."""
+    for var in ("CLIPMAKER_ALLOW_PRIVATE_URLS", "HTTP_PROXY", "HTTPS_PROXY", "http_proxy",
+                "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    real_check = fetch._check_ip
+    monkeypatch.setattr(fetch, "_check_ip", lambda a: None if a == FAKE_PUBLIC else real_check(a))
+    data = Path(tiny_video).read_bytes()
+    hosts = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hosts.append(self.headers.get("Host"))
+            if self.path == "/video.mp4":
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            elif self.path == "/to-internal":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.server.server_port}/video.mp4")
+                self.end_headers()
+            else:
+                self.send_error(404)
+
+        def log_message(self, *args):
+            pass
+
+    try:
+        srv = http.server.ThreadingHTTPServer((FAKE_PUBLIC, 0), Handler)
+    except OSError:
+        pytest.skip("can't bind 127.0.0.2")
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    table = {}
+
+    def resolve(host, port):
+        answers = table[host]
+        ip = answers.pop(0) if len(answers) > 1 else answers[0]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))]
+
+    monkeypatch.setattr(fetch, "_resolve", resolve)
+    yield srv.server_port, hosts, table
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_pinned_download_connects_to_checked_address(pinned, tmp_path):
+    port, hosts, table = pinned
+    table["video.test"] = [FAKE_PUBLIC]  # not in real DNS: only the pinned connection can reach it
+    out = download(f"http://video.test:{port}/video.mp4", tmp_path / "v.mp4")
+    assert out.stat().st_size > 0
+    assert hosts == [f"video.test:{port}"]  # Host header keeps the name
+
+
+def test_dns_rebinding_is_blocked(pinned, tmp_path):
+    port, hosts, table = pinned
+    # public for the up-front check, then 127.0.0.1 for the connection
+    table["rebind.test"] = [FAKE_PUBLIC, "127.0.0.1"]
     with pytest.raises(FetchError, match="private or internal"):
-        download(f"{base}/to-internal", tmp_path / "v.mp4")
+        download(f"http://rebind.test:{port}/video.mp4", tmp_path / "v.mp4")
+    assert hosts == [] and not list(tmp_path.iterdir())
+
+
+def test_redirect_to_internal_address_is_blocked(pinned, tmp_path):
+    port, hosts, table = pinned
+    table["video.test"] = [FAKE_PUBLIC]
+    table["127.0.0.1"] = ["127.0.0.1"]
+    with pytest.raises(FetchError, match="private or internal"):
+        download(f"http://video.test:{port}/to-internal", tmp_path / "v.mp4")
+    assert hosts == [f"video.test:{port}"]  # the redirect target was never contacted
     assert not list(tmp_path.iterdir())
+
+
+def test_proxy_falls_back_to_unpinned_opener(monkeypatch):
+    monkeypatch.delenv("CLIPMAKER_ALLOW_PRIVATE_URLS", raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.internal:3128")
+    handlers = {type(h) for h in fetch.build_opener().handlers}
+    assert fetch._PinnedHTTPSHandler not in handlers
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    handlers = {type(h) for h in fetch.build_opener().handlers}
+    assert {fetch._PinnedHTTPHandler, fetch._PinnedHTTPSHandler} <= handlers
 
 
 def test_cli_reports_blocked_link(tmp_path, monkeypatch, capsys):
@@ -110,3 +189,47 @@ def test_cli_reports_blocked_link(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("CLIPMAKER_ALLOW_PRIVATE_URLS", raising=False)
     assert main(["http://127.0.0.1:9/video.mp4", "--out", str(tmp_path / "out")]) == 2
     assert "private or internal" in capsys.readouterr().err
+
+
+def test_pinned_https_verifies_certificate_for_the_name(pinned, tmp_path):
+    import shutil
+    import ssl
+    import subprocess
+    import urllib.request
+
+    if not shutil.which("openssl"):
+        pytest.skip("openssl missing")
+    port, hosts, table = pinned
+    table["video.test"] = [FAKE_PUBLIC]
+    cert, key = tmp_path / "c.pem", tmp_path / "k.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                    "-subj", "/CN=video.test", "-addext", "subjectAltName=DNS:video.test",
+                    "-keyout", str(key), "-out", str(cert)], check=True, capture_output=True)
+    server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    server_ctx.load_cert_chain(cert, key)
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.HTTPServer((FAKE_PUBLIC, 0), Handler)
+    srv.socket = server_ctx.wrap_socket(srv.socket, server_side=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        client_ctx = ssl.create_default_context(cafile=str(cert))
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                             fetch._PinnedHTTPSHandler(context=client_ctx))
+        with opener.open(f"https://video.test:{srv.server_port}/", timeout=10) as r:
+            assert r.read() == b"ok"
+        table["other.test"] = [FAKE_PUBLIC]  # same address, wrong name for the certificate
+        with pytest.raises(Exception, match="(?i)certificate|hostname"):
+            opener.open(f"https://other.test:{srv.server_port}/", timeout=10)
+    finally:
+        srv.shutdown()
+        srv.server_close()

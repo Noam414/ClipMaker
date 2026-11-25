@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-022: Close DNS rebinding for link downloads by pinning the checked address (2026-11-25)
+- Decision: `fetch.build_opener()` installs HTTP/HTTPS handlers whose connections resolve the host, check every address (public only) and connect to exactly that checked address in the same step (`_connect_pinned`); the HTTP client never does its own lookup. Redirects get a new connection, so they are checked and pinned too. TLS keeps verifying the certificate for the host name (SNI), and the Host header is unchanged. Env proxies are ignored in this mode. If an outbound proxy is configured (`HTTP(S)_PROXY`), the old unpinned opener is used with a warning, because the proxy resolves names itself; `CLIPMAKER_ALLOW_PRIVATE_URLS=1` also uses the plain opener. The test site in `tests/test_sections.py` now answers HTTP Range requests (`tests/rangeserver.py`), like real hosts.
+- Alternatives considered: resolve once and rewrite the URL to the IP (breaks TLS hostname checks and virtual hosts); a custom resolver via `socket.getaddrinfo` monkeypatching (global, not thread-safe); an egress firewall on the server (good extra layer for M7, but not testable here).
+- Why: the old code resolved once for the check and again inside urllib, so a host with a short-TTL record could pass the check and then point at 127.0.0.1 or the cloud metadata address. Tests: pinned download to a name only our resolver knows, a rebinding host (public, then 127.0.0.1) is refused before any byte is sent, a redirect to 127.0.0.1 is never contacted, and HTTPS through the pinned handler verifies the certificate against the name.
+- How to reverse: make `build_opener()` return `urllib.request.build_opener(_CheckedRedirects())`.
+
 ## D-021: Decode speech chunks with parallel single-threaded recognizers (2026-11-24)
 - Decision: `transcribe()` creates `CLIPMAKER_ASR_WORKERS` recognizers (default: one per core, max 4), each with `num_threads = cores // workers`, and decodes the VAD chunks through a thread pool; results keep chunk order. Applies to Moonshine and Whisper alike.
 - Alternatives considered: one recognizer with 2 threads (before: 7.5 s for 40 chunks of `long_talk`); sherpa-onnx `decode_streams` batches of 8 (7.5 s, no gain on CPU); 2 recognizers x 1 thread (**4.0 s**, identical text).

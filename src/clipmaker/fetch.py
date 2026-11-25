@@ -8,13 +8,21 @@ Guards (M5.5, D-018):
 - a size cap (Content-Length when given, and always while streaming) and a length cap
   (ffprobe on the downloaded file)
 
+- DNS rebinding is closed by pinning (D-022): every connection, including after redirects,
+  resolves the name, checks the addresses and then connects to exactly the address it
+  checked. The HTTP client never resolves the name again, so a host can't answer "public"
+  for the check and "127.0.0.1" for the connection. TLS still verifies the certificate
+  against the host name (SNI), and the Host header is unchanged.
+
 `CLIPMAKER_ALLOW_PRIVATE_URLS=1` lifts the address check, for tests against a local server.
-Known limit: the name is resolved once for the check and again by the HTTP client, so a
-DNS-rebinding host could still switch addresses in between.
+Known limit: when an outbound proxy is configured (HTTP(S)_PROXY), the proxy resolves names,
+so pinning can't apply; the check before the request still runs.
 """
 from __future__ import annotations
 
+import http.client
 import ipaddress
+import logging
 import os
 import socket
 import urllib.error
@@ -23,6 +31,8 @@ import urllib.request
 from pathlib import Path
 
 from clipmaker.media import probe
+
+log = logging.getLogger(__name__)
 
 MAX_BYTES = 4 * 1024 ** 3  # 4 GB
 MAX_SECONDS = 60 * 60  # D-013 guardrail: videos up to 60 minutes
@@ -62,17 +72,87 @@ def check_url(url: str) -> str:
         raise FetchError("The link has an invalid port.") from exc
     if _private_allowed():
         return url
-    try:
-        infos = _resolve(parts.hostname, port)
-    except (socket.gaierror, UnicodeError) as exc:
-        raise FetchError(f"Can't find the host {parts.hostname!r}.") from exc
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0].split("%", 1)[0])
-        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-            ip = ip.ipv4_mapped
-        if not ip.is_global or ip.is_multicast:
-            raise FetchError("Links to private or internal addresses aren't allowed.")
+    checked_addresses(parts.hostname, port)
     return url
+
+
+def _check_ip(address: str) -> None:
+    ip = ipaddress.ip_address(address.split("%", 1)[0])
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if not ip.is_global or ip.is_multicast:
+        raise FetchError("Links to private or internal addresses aren't allowed.")
+
+
+def checked_addresses(host: str, port: int) -> list[tuple]:
+    """Resolve `host` and return its (family, sockaddr) pairs; FetchError if any is private."""
+    try:
+        infos = _resolve(host, port)
+    except (socket.gaierror, UnicodeError) as exc:
+        raise FetchError(f"Can't find the host {host!r}.") from exc
+    if not infos:
+        raise FetchError(f"Can't find the host {host!r}.")
+    for info in infos:
+        _check_ip(info[4][0])
+    return [(info[0], info[4]) for info in infos]
+
+
+def _connect_pinned(host: str, port: int, timeout, source_address=None) -> socket.socket:
+    """Connect to an address of `host` that was checked in this same call (no second lookup)."""
+    last = None
+    for family, sockaddr in checked_addresses(host, port):
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        try:
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            sock.close()
+            last = exc
+    raise last or OSError(f"can't connect to {host}")
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = _connect_pinned(self.host, self.port, self.timeout, self.source_address)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        sock = _connect_pinned(self.host, self.port, self.timeout, self.source_address)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_PinnedHTTPConnection, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_PinnedHTTPSConnection, req, context=self._context)
+
+
+def _proxy_configured() -> bool:
+    proxies = urllib.request.getproxies()
+    return bool(proxies.get("http") or proxies.get("https"))
+
+
+def build_opener() -> urllib.request.OpenerDirector:
+    """An opener that re-checks redirects and, unless a proxy or the private-address
+    override is configured, connects only to the address it just checked (D-022)."""
+    if _private_allowed():
+        return urllib.request.build_opener(_CheckedRedirects())
+    if _proxy_configured():
+        log.warning("outbound proxy configured: link downloads can't pin checked addresses")
+        return urllib.request.build_opener(_CheckedRedirects())
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _PinnedHTTPHandler(),
+                                       _PinnedHTTPSHandler(), _CheckedRedirects())
 
 
 class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
@@ -90,7 +170,7 @@ def download(url: str, dest: Path, max_bytes: int = MAX_BYTES, max_seconds: floa
     `progress(fraction)` is called while streaming when the server sends a Content-Length.
     """
     check_url(url)
-    opener = urllib.request.build_opener(_CheckedRedirects())
+    opener = build_opener()
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
