@@ -26,6 +26,8 @@ class RangeHandler(http.server.SimpleHTTPRequestHandler):
         path = self.translate_path(self.path)
         if not rng or not os.path.isfile(path):
             return super().send_head()
+        if self.stats is not None:
+            self.stats["ranges"].append(rng.strip())
         m = _RANGE.match(rng.strip())
         size = os.path.getsize(path)
         if not m or (not m.group(1) and not m.group(2)):
@@ -82,7 +84,7 @@ class RangeHandler(http.server.SimpleHTTPRequestHandler):
 @contextmanager
 def serve(directory):
     """Serve `directory` on 127.0.0.1; yields (base_url, stats)."""
-    stats = {"bytes": 0, "requests": 0}
+    stats = {"bytes": 0, "requests": 0, "ranges": []}
     handler_cls = type("Handler", (RangeHandler,), {"stats": stats})
     handler = functools.partial(handler_cls, directory=str(directory))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
