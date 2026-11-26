@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-027: No registry image for now: the Oracle server builds the image itself (2026-11-26)
+- Decision: the "multi-arch image" item is met by one architecture-neutral `Dockerfile` (base `python:3.13-slim`, Debian ffmpeg, only wheels with aarch64 builds), verified by CI building and smoke-testing it natively on amd64 and arm64 (D-026). The M7 deploy kit will run `docker compose up --build` on the server, so no image registry is needed.
+- Alternatives considered: publish a multi-arch image to GitHub Container Registry with `docker buildx` (needs `packages: write` for the workflow token — the agent must not change Actions permissions — and a pull step on the server; the owner can enable it later); Docker Hub (needs an account and a secret).
+- Why: zero accounts and secrets, and the build takes a few minutes once per update on the server. Revisit when there are several servers or when builds on the 2-core server get too slow.
+- How to reverse: add a `publish` job with `permissions: packages: write` that runs `docker buildx build --platform linux/amd64,linux/arm64 --push -t ghcr.io/noam414/clipmaker:<tag>`, and point the deploy compose file at that image.
+
 ## D-026: ARM check in CI on GitHub's native arm64 runners (2026-11-26)
 - Decision: the CI `test` and `docker` jobs run as a matrix on `ubuntu-24.04` and `ubuntu-24.04-arm` (native Ampere-class arm64, free for public repositories). The ARM job runs the full test suite, the eval smoke run and prints the per-stage speed, so the first ARM timings (D-021 asks for a re-measure) come from CI. Checked locally first: every native dependency has a manylinux aarch64 wheel for Python 3.13 (sherpa-onnx 2.0.3, opencv-python-headless 5.1, numpy 2.5, uvloop, httptools, pydantic-core), so nothing has to compile on the server.
 - Alternatives considered: QEMU emulation with `docker buildx` on x86 (works without ARM runners, but ~10x slower and its timings are meaningless); waiting for the Oracle server (H-002) to test there.
