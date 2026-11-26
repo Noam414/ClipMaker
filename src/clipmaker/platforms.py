@@ -43,6 +43,8 @@ log = logging.getLogger(__name__)
 
 # yt-dlp error text -> message that is safe and useful to show users.
 _ERRORS = (
+    (("sign in to confirm your age", "age-restricted", "inappropriate for some users"),
+     "This video is age-restricted, so it can't be imported without signing in. Upload the file instead."),
     (("confirm you're not a bot", "confirm you’re not a bot", "sign in to confirm"),
      "YouTube is blocking downloads from this server right now (bot check). "
      "Try again later, or upload the video file instead."),
@@ -50,12 +52,12 @@ _ERRORS = (
      "The site is rate-limiting this server. Try again in a few minutes, or upload the file instead."),
     (("private video", "members-only", "join this channel"),
      "This video is private or members-only, so it can't be imported. Upload the file instead."),
-    (("sign in to confirm your age", "age-restricted", "inappropriate for some users"),
-     "This video is age-restricted, so it can't be imported without signing in. Upload the file instead."),
     (("video unavailable", "this video has been removed", "does not exist"),
      "The video is unavailable (removed, region-locked or a wrong link)."),
     (("is offline", "the channel is not currently live"),
      "The stream is offline. Use a link to a past broadcast (VOD) or a clip."),
+    (("http error 500", "http error 502", "http error 503", "http error 504"),
+     "The site had a server error. Try again in a few minutes, or upload the file instead."),
     (("unable to connect to proxy", "proxyerror", "tunnel connection failed"),
      "The download proxy isn't reachable. Check CLIPMAKER_YTDLP_PROXY."),
 )
@@ -104,6 +106,8 @@ class YtdlpConfig:
     js_runtime: str | None = None
     extractors: tuple[str, ...] = EXTRACTORS
     extra_args: list[str] = field(default_factory=list)
+    retries: int = 2  # extra attempts after a transient failure (CLIPMAKER_YTDLP_RETRIES)
+    retry_wait: float = 10.0  # seconds before the first retry; x3 for each next one
 
     @classmethod
     def from_env(cls, env=None) -> "YtdlpConfig":
@@ -114,6 +118,8 @@ class YtdlpConfig:
             cookies_file=Path(cookies) if cookies else None,
             proxy=(env.get("CLIPMAKER_YTDLP_PROXY") or None),
             js_runtime=(env.get("CLIPMAKER_YTDLP_JS_RUNTIME") or None),
+            retries=max(0, int(env.get("CLIPMAKER_YTDLP_RETRIES") or 2)),
+            retry_wait=max(0.0, float(env.get("CLIPMAKER_YTDLP_RETRY_WAIT") or 10)),
         )
 
 
@@ -139,6 +145,41 @@ def stderr_digest(stderr: str, limit: int = 3000) -> str:
             if ln.strip() and not ln.startswith("  ") and not ln.startswith("Traceback")]
     text = "\n".join(keep)
     return text if len(text) <= limit else text[:limit // 3] + "\n…\n" + text[-(2 * limit) // 3:]
+
+
+# Failures worth another try after a pause: rate limits, server errors, network hiccups and
+# the bot check (the PO-token provider hands out a fresh token on the next run).
+# Private/removed/age-restricted/too-long are final.
+_TRANSIENT = ("http error 429", "too many requests", "http error 500", "http error 502",
+              "http error 503", "http error 504", "timed out", "connection reset",
+              "temporarily unavailable", "remote end closed connection", "not a bot")
+_FINAL = ("confirm your age", "private video", "members-only", "video unavailable",
+          "has been removed", "does not exist", "is offline", "not currently live")
+
+
+def is_transient(stderr: str) -> bool:
+    text = (stderr or "").lower()
+    return any(n in text for n in _TRANSIENT) and not any(n in text for n in _FINAL)
+
+
+def _run_ytdlp(cmd: list[str], config: "YtdlpConfig", what: str) -> subprocess.CompletedProcess:
+    """Run yt-dlp; retry transient failures `config.retries` times with growing pauses
+    (`config.retry_wait` s, then 3x that, ...). Raises FetchError on a timeout."""
+    import time
+
+    for attempt in range(config.retries + 1):
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
+        except subprocess.TimeoutExpired as exc:
+            raise FetchError(f"{what} took too long. Upload the file instead.") from exc
+        if proc.returncode == 0 or attempt == config.retries or not is_transient(proc.stderr):
+            return proc
+        wait = config.retry_wait * 3 ** attempt
+        log.warning("yt-dlp failed (%s; transient, attempt %d of %d), retrying in %.0f s: %s",
+                    what, attempt + 1, config.retries + 1, wait,
+                    stderr_digest(proc.stderr, 600))
+        time.sleep(wait)
+    return proc
 
 
 def friendly_error(stderr: str) -> str:
@@ -170,9 +211,7 @@ def fetch_audio(url: str, dest_dir: Path, config: YtdlpConfig | None = None,
            "-o", str(dest_dir / "audio.%(ext)s"), "--no-progress",
            "--print", "after_move:filepath", "--", url]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
-    except subprocess.TimeoutExpired as exc:
-        raise FetchError("The download took too long. Upload the file instead.") from exc
+        proc = _run_ytdlp(cmd, config, "The download")
     finally:
         if cookies_copy:
             cookies_copy.unlink(missing_ok=True)
@@ -228,9 +267,7 @@ def fetch_section(url: str, start: float, end: float, dest: Path, config: YtdlpC
            "-o", str(dest.with_suffix("")) + ".%(ext)s", "--no-progress",
            "--print", "after_move:filepath", "--", url]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
-    except subprocess.TimeoutExpired as exc:
-        raise FetchError("Downloading a clip's video took too long. Upload the file instead.") from exc
+        proc = _run_ytdlp(cmd, config, "Downloading a clip's video")
     finally:
         if cookies_copy:
             cookies_copy.unlink(missing_ok=True)

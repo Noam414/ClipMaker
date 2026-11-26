@@ -58,6 +58,7 @@ def test_installed_ytdlp_knows_every_option():
     ("ERROR: [youtube] x: Private video. Sign in if you've been granted access", "private"),
     ("ERROR: [youtube] x: Video unavailable. This video has been removed by the uploader", "unavailable"),
     ("ERROR: [twitch:stream] somebody: The channel is not currently live", "offline"),
+    ("ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate", "age-restricted"),
     ("ERROR: something new and strange", "Upload the video file"),
 ])
 def test_friendly_errors(stderr, needle):
@@ -68,9 +69,15 @@ class _FakeSite(http.server.BaseHTTPRequestHandler):
     """Serves /talk.m4a; also acts as a plain HTTP proxy (absolute-URL requests)."""
     body = b""
     seen: list = []
+    fail_next = 0  # answer this many requests with `fail_code` first (a flaky or blocking site)
+    fail_code = 503
 
     def do_GET(self):
         type(self).seen.append({"path": self.path, "cookie": self.headers.get("Cookie", "")})
+        if type(self).fail_next > 0:
+            type(self).fail_next -= 1
+            self.send_error(type(self).fail_code)
+            return
         if not self.path.endswith("/talk.m4a"):
             self.send_error(404)
             return
@@ -183,3 +190,47 @@ def test_stderr_digest_drops_traceback_keeps_ffmpeg_lines():
     long = "\n".join(f"line {i}" for i in range(5000))
     d = stderr_digest(long)
     assert len(d) < 3100 and d.startswith("line 0") and d.endswith("line 4999")
+
+
+def test_transient_failure_is_retried_then_succeeds(fake_site, tmp_path, caplog):
+    _FakeSite.fail_next, _FakeSite.fail_code = 3, 503  # each yt-dlp run fails on its first request
+    try:
+        out = fetch_audio(f"{fake_site}/talk.m4a", tmp_path / "job",
+                          _local_config(retries=5, retry_wait=0))
+    finally:
+        left, _FakeSite.fail_next = _FakeSite.fail_next, 0
+    assert out.is_file() and left == 0
+    assert "retrying" in caplog.text
+
+
+def test_permanent_failure_is_not_retried(fake_site, tmp_path):
+    _FakeSite.fail_next, _FakeSite.fail_code = 100, 404
+    _FakeSite.seen.clear()
+    try:
+        with pytest.raises(FetchError, match="Upload the"):
+            fetch_audio(f"{fake_site}/talk.m4a", tmp_path / "job", _local_config(retries=3, retry_wait=0))
+    finally:
+        _FakeSite.fail_next, _FakeSite.fail_code = 0, 503
+    assert len(_FakeSite.seen) <= 3  # one yt-dlp run, no repeats
+
+
+def test_retries_give_up_with_a_clear_message(fake_site, tmp_path):
+    _FakeSite.fail_next, _FakeSite.fail_code = 1000, 429
+    try:
+        with pytest.raises(FetchError, match="rate-limiting"):
+            fetch_audio(f"{fake_site}/talk.m4a", tmp_path / "job", _local_config(retries=1, retry_wait=0))
+    finally:
+        _FakeSite.fail_next, _FakeSite.fail_code = 0, 503
+
+
+@pytest.mark.parametrize("stderr,transient", [
+    ("ERROR: [youtube] x: Sign in to confirm you’re not a bot", True),
+    ("ERROR: unable to download video data: HTTP Error 503: Service Unavailable", True),
+    ("ERROR: [youtube] x: Sign in to confirm your age", False),
+    ("ERROR: [youtube] x: Private video. Sign in if you've been granted access", False),
+    ("ERROR: [youtube] x: Video unavailable", False),
+])
+def test_is_transient(stderr, transient):
+    from clipmaker.platforms import is_transient
+
+    assert is_transient(stderr) is transient
