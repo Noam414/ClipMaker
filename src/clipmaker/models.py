@@ -23,10 +23,16 @@ def models_dir() -> Path:
 
 
 def _download(url: str, dest: Path) -> None:
-    tmp = dest.with_suffix(dest.suffix + ".part")
-    with urllib.request.urlopen(url, timeout=60) as resp, open(tmp, "wb") as fh:
-        shutil.copyfileobj(resp, fh, length=1 << 20)
-    os.replace(tmp, dest)
+    # A unique temp name per call: parallel render workers may fetch the same model on a
+    # cold cache, and a shared ".part" made the loser's rename fail (face detector off).
+    fd, name = tempfile.mkstemp(dir=dest.parent, prefix=dest.name + ".", suffix=".part")
+    tmp = Path(name)
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp, os.fdopen(fd, "wb") as fh:
+            shutil.copyfileobj(resp, fh, length=1 << 20)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def silero_vad() -> Path:

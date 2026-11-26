@@ -109,10 +109,15 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
             check_url(url)  # fail fast; the download re-checks every redirect
         except FetchError as exc:
             raise HTTPException(400, str(exc)) from exc
+        from clipmaker.hls import is_hls
+
         name = filename_from_url(url)
         ext = Path(name).suffix.lower() if Path(name).suffix.lower() in VIDEO_EXTS else ".mp4"
+        source_file = f"source{ext}"
+        if is_hls(url):  # sections mode: only the audio is stored as the project's source
+            name, source_file = "HLS stream", "download/audio.m4a"
         with Session() as s:
-            project = Project(name=Path(name).stem, source_file=f"source{ext}")
+            project = Project(name=Path(name).stem, source_file=source_file)
             s.add(project)
             s.commit()
             pid = project.id

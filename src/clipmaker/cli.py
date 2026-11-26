@@ -67,7 +67,7 @@ def _probe(argv: list[str]) -> int:
 
 def _process(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="clipmaker", description="Turn a long video into short vertical clips.")
-    parser.add_argument("input", help="input video file, a direct http(s) link to one, "
+    parser.add_argument("input", help="input video file, a direct http(s) link to one (or to an HLS .m3u8), "
                                       "or a YouTube/Twitch video link (with --rights)")
     parser.add_argument("--rights", action="store_true",
                         help="confirm you own the linked YouTube/Twitch video or have the rights to use it")
@@ -93,6 +93,7 @@ def _process(argv: list[str]) -> int:
     source = args.input
     from clipmaker.fetch import FetchError, download, filename_from_url, is_url
 
+    from clipmaker.hls import is_hls
     from clipmaker.platforms import platform_link_ok, platform_of
 
     video_source = None
@@ -111,6 +112,16 @@ def _process(argv: list[str]) -> int:
             url = source
             source = fetch_audio(url, Path(args.out) / "source")
             video_source = section_source(url, Path(args.out) / "source" / "sections", probe(source).duration)
+        except FetchError as exc:
+            print(f"clipmaker: {exc}", file=sys.stderr)
+            return 2
+    elif is_url(source) and is_hls(source):
+        from clipmaker import hls
+
+        try:  # HLS: audio first, then only the selected clips' segments (D-024)
+            url = source
+            source = hls.fetch_audio(url, Path(args.out) / "source" / "audio.m4a")
+            video_source = hls.section_source(url, Path(args.out) / "source" / "sections")
         except FetchError as exc:
             print(f"clipmaker: {exc}", file=sys.stderr)
             return 2

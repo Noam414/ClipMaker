@@ -53,7 +53,8 @@ clipmaker input.mp4 --out clips  # make clips from a video
 plus `clips.json` with timings, text and scores. Options: `--language en|he`
 (default: auto-detect), `--max-clips N`, `--no-captions`, `--keep-pauses` (don't shorten pauses over 1 s), `--static-crop` (centre crop, no face following), `--caption-style bold|box|pop|basic` (all but `basic` highlight the spoken word), `--no-keywords` (don't colour the key word of each caption line), `--emoji` (pop a matching symbol above key words), `--no-title` (no hook title card in the first 3 s), `--no-progress-bar`, `--no-zoom` (no zoom punch-ins on strong key words). The input can also be a direct
 link to a video file (`clipmaker https://example.com/talk.mp4 --out clips`; up to 60 minutes and 4 GB, public
-addresses only). The first run downloads the speech models (Whisper base ~200 MB for Hebrew and language detection,
+addresses only), or an HLS stream link (`….m3u8`, not live or encrypted): then only the audio is fetched first and,
+after the clips are picked, only the stream segments they cover. The first run downloads the speech models (Whisper base ~200 MB for Hebrew and language detection,
 Moonshine base ~240 MB for English) and a small face detector (~230 KB) into `.cache/models`.
 `CLIPMAKER_EN_ENGINE=whisper` uses Whisper for English too; `CLIPMAKER_WHISPER_MODEL=tiny` picks a smaller,
 less accurate Whisper.

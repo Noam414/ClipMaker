@@ -78,13 +78,14 @@ class RangeHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.stats is not None:
             self.stats["requests"] += 1
+            self.stats["paths"].append(self.path)
         super().do_GET()
 
 
 @contextmanager
 def serve(directory):
     """Serve `directory` on 127.0.0.1; yields (base_url, stats)."""
-    stats = {"bytes": 0, "requests": 0, "ranges": []}
+    stats = {"bytes": 0, "requests": 0, "ranges": [], "paths": []}
     handler_cls = type("Handler", (RangeHandler,), {"stats": stats})
     handler = functools.partial(handler_cls, directory=str(directory))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
