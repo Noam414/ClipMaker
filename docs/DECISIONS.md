@@ -12,6 +12,12 @@ Template:
 - How to reverse:
 ```
 
+## D-026: ARM check in CI on GitHub's native arm64 runners (2026-11-26)
+- Decision: the CI `test` and `docker` jobs run as a matrix on `ubuntu-24.04` and `ubuntu-24.04-arm` (native Ampere-class arm64, free for public repositories). The ARM job runs the full test suite, the eval smoke run and prints the per-stage speed, so the first ARM timings (D-021 asks for a re-measure) come from CI. Checked locally first: every native dependency has a manylinux aarch64 wheel for Python 3.13 (sherpa-onnx 2.0.3, opencv-python-headless 5.1, numpy 2.5, uvloop, httptools, pydantic-core), so nothing has to compile on the server.
+- Alternatives considered: QEMU emulation with `docker buildx` on x86 (works without ARM runners, but ~10x slower and its timings are meaningless); waiting for the Oracle server (H-002) to test there.
+- Why: the deploy target is ARM; catching a missing wheel or an ARM-only failure before the owner sets up the server.
+- How to reverse: drop `ubuntu-24.04-arm` from the two matrices in `.github/workflows/ci.yml`. If the repository becomes private and ARM runners aren't available on its plan, the ARM jobs will wait for a runner; remove them then.
+
 ## D-025: Retry transient yt-dlp failures with growing pauses; final ones fail at once (2026-11-26)
 - Decision: `platforms._run_ytdlp` re-runs yt-dlp after a transient failure (HTTP 429/5xx, timeouts, connection resets, YouTube's bot check — the PO-token provider gives a new token next run), by default 2 more times after 10 s and 30 s (`CLIPMAKER_YTDLP_RETRIES`, `CLIPMAKER_YTDLP_RETRY_WAIT`). Private, removed, age-restricted, offline and too-long are final and fail at once with their message. Also fixed: an age-restricted video got the bot-check message, because "Sign in to confirm your age" contains "sign in to confirm"; 5xx now has its own message.
 - Alternatives considered: rely on yt-dlp's own `--retries` (only covers media fragments, not the extractor's page requests where 429 and the bot check happen); retrying in the job queue (would redo the audio download and the transcription).

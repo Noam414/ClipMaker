@@ -10,7 +10,13 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    # x86 (dev machines) and native ARM (the Oracle Ampere server, M7, D-026);
+    # GitHub's arm64 runners are free for public repositories
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,9 +42,15 @@ jobs:
         run: python3 -m pytest -q
       - name: Eval (smoke)
         run: python3 scripts/eval.py --no-history
+      - name: Speed summary
+        run: python3 -c "import json,platform;d=json.load(open('eval/results/latest.json'));a=d['summary'];print(platform.machine(),'60min_s',a.get('extrapolated_60min_s'),a.get('speed_stages_s'))"
 
   docker:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Build image
