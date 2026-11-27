@@ -30,6 +30,8 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255))
     source_file: Mapped[str] = mapped_column(String(512))  # relative to the project directory
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # visitor id (D-030)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     jobs: Mapped[list[Job]] = relationship(back_populates="project", order_by="Job.id")
     clips: Mapped[list[Clip]] = relationship(back_populates="project", order_by="Clip.id")

@@ -80,7 +80,7 @@
         location.href = `/projects/${projectId}`; return;  // first clip is ready: the gallery fills in from here
       }
       if (job.status !== "done") {
-        show(job.status === "queued" ? "Waiting in queue…" : job.stage === "download" ? `Downloading the video… ${Math.round(100 * job.progress)}%` : `Working: ${job.stage}`, job.progress);
+        show(job.status === "queued" ? (job.queue_ahead ? `Waiting in queue: ${job.queue_ahead} video${job.queue_ahead === 1 ? "" : "s"} ahead of you…` : "Waiting in queue…") : job.stage === "download" ? `Downloading the video… ${Math.round(100 * job.progress)}%` : `Working: ${job.stage}`, job.progress);
         setTimeout(() => poll(jobId, projectId), 1000); return;
       }
       show("Done", 1);

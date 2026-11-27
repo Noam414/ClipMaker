@@ -57,6 +57,45 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
     app.state.worker = worker
     app.state.janitor = janitor
 
+    from clipmaker import visitor as vis
+
+    key = vis.secret_key(settings.data_dir)
+
+    @app.middleware("http")
+    async def visitor_cookie(request: Request, call_next):
+        vid = vis.verify(key, request.cookies.get(vis.COOKIE))
+        fresh = vid is None
+        request.state.visitor = vid or vis.new_id()
+        response = await call_next(request)
+        if fresh:
+            response.set_cookie(vis.COOKIE, vis.sign(key, request.state.visitor), max_age=vis.MAX_AGE,
+                                httponly=True, samesite="lax", secure=request.url.scheme == "https")
+        return response
+
+    def _ip(request: Request) -> str:
+        return request.client.host if request.client else ""
+
+    def _own(s, project_id: int, request: Request) -> Project:
+        """The project, or 404 if it doesn't exist or (private mode) belongs to another visitor."""
+        p = s.get(Project, project_id)
+        if p is None or (vis.private_mode() and p.owner != request.state.visitor):
+            raise HTTPException(404, "no such project")
+        return p
+
+    def _check_limit(request: Request) -> None:
+        limit = vis.daily_limit()
+        if limit <= 0:
+            return
+        since = utcnow() - timedelta(hours=24)
+        who = Project.owner == request.state.visitor
+        ip = _ip(request)
+        if ip:
+            who = who | (Project.client_ip == ip)
+        with Session() as s:
+            used = s.scalar(select(func.count()).select_from(Project).where(Project.created_at >= since, who))
+        if used >= limit:
+            raise HTTPException(429, f"You've reached today's limit of {limit} videos. Please come back tomorrow.")
+
     def _need_room() -> None:
         if not has_room(engine, settings.data_dir):
             raise HTTPException(503, "The server is full right now. Please try again in a few hours.")
@@ -66,14 +105,16 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         return {"status": "ok", "version": __version__, "database": ping(engine)}
 
     @app.post("/api/projects", status_code=201)
-    def upload(file: UploadFile = File(...)) -> dict:
+    def upload(request: Request, file: UploadFile = File(...)) -> dict:
         name = _safe_name(file.filename or "video.mp4")
         ext = Path(name).suffix.lower()
         if ext not in VIDEO_EXTS:
             raise HTTPException(400, f"unsupported file type {ext or '(none)'}; use one of {sorted(VIDEO_EXTS)}")
+        _check_limit(request)
         _need_room()
         with Session() as s:
-            project = Project(name=Path(name).stem, source_file=f"source{ext}")
+            project = Project(name=Path(name).stem, source_file=f"source{ext}",
+                              owner=request.state.visitor, client_ip=_ip(request))
             s.add(project)
             s.commit()
             pid = project.id
@@ -95,14 +136,16 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         return {"project_id": pid, "job_id": job.id, "name": Path(name).stem, "bytes": size}
 
     @app.post("/api/projects/link", status_code=201)
-    def import_link(url: str = Body(...), rights: bool = Body(False)) -> dict:
+    def import_link(request: Request, url: str = Body(...), rights: bool = Body(False)) -> dict:
         from clipmaker.fetch import FetchError, check_url, filename_from_url, is_url
         from clipmaker.platforms import platform_link_ok, platform_of
 
         url = url.strip()
         if not is_url(url):
             raise HTTPException(400, "Paste a link that starts with http:// or https://.")
+        _check_limit(request)
         _need_room()
+        who = {"owner": request.state.visitor, "client_ip": _ip(request)}
         platform = platform_of(url)
         if platform:
             if not rights:
@@ -112,7 +155,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
                 raise HTTPException(400, "This doesn't look like a link to one video or VOD. "
                                          "Paste the link of a single video, VOD or clip.")
             with Session() as s:
-                project = Project(name=f"{platform.title()} video", source_file="download/audio")
+                project = Project(name=f"{platform.title()} video", source_file="download/audio", **who)
                 s.add(project)
                 s.commit()
                 pid = project.id
@@ -131,7 +174,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         if is_hls(url):  # sections mode: only the audio is stored as the project's source
             name, source_file = "HLS stream", "download/audio.m4a"
         with Session() as s:
-            project = Project(name=Path(name).stem, source_file=source_file)
+            project = Project(name=Path(name).stem, source_file=source_file, **who)
             s.add(project)
             s.commit()
             pid = project.id
@@ -140,20 +183,23 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         return {"project_id": pid, "job_id": job.id, "name": Path(name).stem}
 
     @app.get("/api/jobs/{job_id}")
-    def job_status(job_id: int) -> dict:
+    def job_status(job_id: int, request: Request) -> dict:
         with Session() as s:
             job = s.get(Job, job_id)
             if job is None:
                 raise HTTPException(404, "no such job")
+            _own(s, job.project_id, request)
             ready = s.scalar(select(func.count()).select_from(Clip).where(Clip.job_id == job_id))
-            return job.to_dict() | {"clips_ready": ready or 0}
+            extra = {"clips_ready": ready or 0}
+            if job.status == "queued":  # jobs that will run before this one
+                extra["queue_ahead"] = s.scalar(select(func.count()).select_from(Job).where(
+                    (Job.status == "running") | ((Job.status == "queued") & (Job.id < job.id)))) or 0
+            return job.to_dict() | extra
 
     @app.get("/api/projects/{project_id}")
-    def project_detail(project_id: int) -> dict:
+    def project_detail(project_id: int, request: Request) -> dict:
         with Session() as s:
-            p = s.get(Project, project_id)
-            if p is None:
-                raise HTTPException(404, "no such project")
+            p = _own(s, project_id, request)
             return {"id": p.id, "name": p.name, "created_at": p.created_at.isoformat(),
                     "jobs": [j.to_dict() for j in p.jobs],
                     "clips": [c.to_dict() | {"url": f"/media/{p.id}/{c.file}" if c.file else None}
@@ -166,9 +212,12 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         return f"{base}_{suffix}"
 
     @app.get("/media/{project_id}/clips/{name}")
-    def media(project_id: int, name: str, download: bool = False):
+    def media(project_id: int, name: str, request: Request, download: bool = False):
         if not re.fullmatch(r"[\w\-]+\.mp4", name):
             raise HTTPException(404)
+        if vis.private_mode():
+            with Session() as s:
+                _own(s, project_id, request)
         path = project_dir(settings.data_dir, project_id) / "clips" / name
         if not path.is_file():
             raise HTTPException(404)
@@ -177,11 +226,9 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         return FileResponse(path, media_type="video/mp4")
 
     @app.get("/projects/{project_id}/clips.zip")
-    def download_all(project_id: int):
+    def download_all(project_id: int, request: Request):
         with Session() as s:
-            p = s.get(Project, project_id)
-            if p is None:
-                raise HTTPException(404, "no such project")
+            p = _own(s, project_id, request)
             job = p.jobs[-1] if p.jobs else None
             files = [c.file for c in sorted(p.clips, key=lambda c: -c.score)
                      if c.file and job is not None and c.job_id == job.id]
@@ -202,9 +249,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
     @app.get("/projects/{project_id}", response_class=HTMLResponse)
     def project_page(request: Request, project_id: int):
         with Session() as s:
-            p = s.get(Project, project_id)
-            if p is None:
-                raise HTTPException(404, "no such project")
+            p = _own(s, project_id, request)
             job = p.jobs[-1] if p.jobs else None
             clips = sorted((c for c in p.clips if job is None or c.job_id == job.id),
                            key=lambda c: -c.score)
@@ -218,7 +263,10 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         with Session() as s:
-            projects = s.scalars(select(Project).order_by(Project.id.desc()).limit(20)).all()
+            q = select(Project).order_by(Project.id.desc()).limit(20)
+            if vis.private_mode():  # a public server shows each visitor only their own projects
+                q = q.where(Project.owner == request.state.visitor)
+            projects = s.scalars(q).all()
             recent = [{"id": p.id, "name": p.name, "status": p.jobs[-1].status if p.jobs else "-",
                        "clips": len(p.clips)} for p in projects]
         return TEMPLATES.TemplateResponse(request, "index.html", {"version": __version__, "recent": recent})
