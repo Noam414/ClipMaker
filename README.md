@@ -37,6 +37,18 @@ docker compose up --build
 
 Then open http://localhost:8000.
 
+### On a server (Oracle Cloud free tier or any Ubuntu 24.04 box)
+
+```
+git clone https://github.com/Noam414/ClipMaker.git && cd ClipMaker
+sudo deploy/oracle/setup.sh
+```
+
+This installs Docker, opens ports 80/443, and starts ClipMaker behind Caddy (free automatic HTTPS) with
+the YouTube PO-token helper. Without a domain the site gets `https://<your-ip-with-dashes>.sslip.io`;
+set `CLIPMAKER_DOMAIN` in `deploy/oracle/.env` to use your own. Update: `git pull && sudo deploy/oracle/setup.sh`.
+The database is backed up nightly to `<data>/backups` (`clipmaker backup`, `clipmaker backup --restore <file>`).
+
 ### Option B: Python 3.11+ (Windows PowerShell shown; same on macOS/Linux)
 
 ```

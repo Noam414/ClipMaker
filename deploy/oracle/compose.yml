@@ -1,0 +1,74 @@
+# ClipMaker on one server (Oracle Cloud Always Free, D-013/D-028).
+# Run from the repository root:  sudo deploy/oracle/setup.sh   (first time)
+#                                docker compose -f deploy/oracle/compose.yml up -d --build
+# Settings live in deploy/oracle/.env (created by setup.sh from env.example; never commit it).
+name: clipmaker
+
+services:
+  clipmaker:
+    build:
+      context: ../..
+      args:
+        WITH_YOUTUBE: "1"
+    image: clipmaker:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CLIPMAKER_HOST: 0.0.0.0
+      CLIPMAKER_PORT: "8000"
+      CLIPMAKER_DATA_DIR: /data
+      CLIPMAKER_CACHE_DIR: /cache
+      DATABASE_URL: sqlite:////data/clipmaker.db
+      CLIPMAKER_YTDLP_POT_URL: http://pot:4416
+      CLIPMAKER_YTDLP_JS_RUNTIME: node
+      # Caddy is the only client; trust its X-Forwarded-For so the app sees visitor IPs
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - ${CLIPMAKER_DATA_PATH:-/srv/clipmaker/data}:/data
+      - models:/cache
+    expose:
+      - "8000"
+    depends_on:
+      - pot
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # Free PO-token provider for YouTube's bot check (H-007 step 1); only the app reaches it
+  pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
+    restart: unless-stopped
+    expose:
+      - "4416"
+    logging: *logs
+
+  # HTTPS with free automatic certificates (Let's Encrypt) for CLIPMAKER_DOMAIN
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CLIPMAKER_DOMAIN: ${CLIPMAKER_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - clipmaker
+    logging: *logs
+
+volumes:
+  models:
+  caddy-data:
+  caddy-config:

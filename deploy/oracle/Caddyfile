@@ -1,0 +1,18 @@
+# CLIPMAKER_DOMAIN: your domain, or <ip-with-dashes>.sslip.io for a free name (setup.sh does this).
+# "localhost" gets a local self-signed certificate (used by the CI smoke test).
+{$CLIPMAKER_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	reverse_proxy clipmaker:8000 {
+		# long uploads and slow first model downloads
+		transport http {
+			read_timeout 15m
+			write_timeout 15m
+		}
+	}
+}

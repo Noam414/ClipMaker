@@ -3,6 +3,7 @@
     clipmaker serve [--host H] [--port P]   run the web app
     clipmaker probe <file>                  print media info as JSON
     clipmaker platform-check                show the YouTube/Twitch (yt-dlp) anti-bot setup
+    clipmaker backup [--out D] [--keep N]   gzipped copy of the SQLite database (safe while running)
     clipmaker <input.mp4> --out <dir>       make clips (pipeline; grows through M1)
 """
 from __future__ import annotations
@@ -53,6 +54,30 @@ def _platform_check(argv: list[str]) -> int:
     for line in problems:
         print("problem:", line, file=sys.stderr)
     return 1 if problems else 0
+
+
+def _backup(argv: list[str]) -> int:
+    from clipmaker.backup import backup_sqlite, restore_sqlite, sqlite_path
+    from clipmaker.config import get_settings
+
+    settings = get_settings()
+    parser = argparse.ArgumentParser(prog="clipmaker backup",
+                                     description="Copy the SQLite database safely while the app runs.")
+    parser.add_argument("--out", default=str(settings.data_dir / "backups"), help="backup directory")
+    parser.add_argument("--keep", type=int, default=14, help="how many backups to keep (default 14)")
+    parser.add_argument("--restore", metavar="FILE", help="restore this backup instead (stop the app first)")
+    args = parser.parse_args(argv)
+    try:
+        db_file = sqlite_path(settings.database_url)
+        if args.restore:
+            restore_sqlite(Path(args.restore), db_file)
+            print(f"restored {args.restore} -> {db_file}")
+        else:
+            print(backup_sqlite(db_file, Path(args.out), keep=args.keep))
+    except (ValueError, OSError, RuntimeError) as exc:
+        print(f"clipmaker backup: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _probe(argv: list[str]) -> int:
@@ -150,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         return _platform_check(argv[1:])
     if argv and argv[0] == "probe":
         return _probe(argv[1:])
+    if argv and argv[0] == "backup":
+        return _backup(argv[1:])
     if argv and argv[0] in ("--version", "-V"):
         print(__version__)
         return 0

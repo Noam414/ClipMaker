@@ -96,9 +96,10 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [x] Pick hosting: Oracle Cloud Always Free, Ampere A1 (2 ARM cores, 12 GB RAM, 200 GB disk), SQLite on the server's disk to start
 - [x] ARM check: install and run the tests on linux/arm64 (sherpa-onnx, opencv, onnx wheels); a CI job that builds the Docker image for arm64 (native arm64 runners in CI, D-026)
 - [x] Multi-arch Docker image (amd64 + arm64): one arch-neutral Dockerfile, built and smoke-tested natively on both in CI; the server builds it itself, no registry (D-027)
-- [ ] Deploy kit in `deploy/oracle/`: production compose file, Caddy for free automatic HTTPS, a setup script for a fresh Ubuntu instance, backups of the database
+- [x] Deploy kit in `deploy/oracle/`: production compose file, Caddy for free automatic HTTPS, a setup script for a fresh Ubuntu instance, backups of the database (D-028; `clipmaker backup`; CI starts the stack on amd64 + arm64)
 - [ ] Free-tier guardrails: max video length (60 min) and upload size, per-visitor daily limit, visible queue position, auto-delete files after 24 h, disk-usage cap
-- [ ] Step-by-step guide in H-002 so the owner deploys with one command, and a smoke test against the live site
+- [x] Step-by-step guide in H-002 so the owner deploys with one command (`sudo deploy/oracle/setup.sh`)
+- [ ] Smoke test against the live site (after H-002 is done): `scripts/smoke_live.py <url>` uploads a fixture and waits for clips
 
 ## M8: Publish to social accounts (later, after M7; D-014)
 - [ ] User accounts (builds on M6 "basic auth and multiple users")
