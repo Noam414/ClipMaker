@@ -67,6 +67,26 @@ def _clip_row(project_id: int, job_id: int, c: dict) -> Clip:
                 file=f"clips/{c['file']}" if c.get("file") else None, data=c)
 
 
+def check_upload_length(source: Path) -> None:
+    """Free-tier guardrail (D-029): `CLIPMAKER_MAX_UPLOAD_MINUTES` (0 = no limit, the kit sets
+    60, like the link limit) fails an uploaded video that is too long, before any work."""
+    import os
+
+    limit = float(os.environ.get("CLIPMAKER_MAX_UPLOAD_MINUTES", "0") or 0)
+    if limit <= 0:
+        return
+    from clipmaker.fetch import FetchError
+    from clipmaker.media import probe
+
+    try:
+        duration = probe(source).duration or 0.0
+    except Exception:  # unreadable files fail in the pipeline with their own message
+        return
+    if duration > limit * 60:
+        raise FetchError(f"This video is {duration / 60:.0f} minutes long; the limit here is "
+                         f"{limit:g} minutes. Trim it or upload a shorter part.")
+
+
 def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
     """Run one claimed job; store its clips. Returns the final status."""
     Session = session_factory(engine)
@@ -110,6 +130,8 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
 
             _set_progress(engine, job_id, "download", 0.0)
             download(url, source, progress=lambda f: _set_progress(engine, job_id, "download", f))
+        else:
+            check_upload_length(source)
         result = runner(source, out_dir, progress=lambda st, f: _set_progress(engine, job_id, st, f),
                         on_clip=store_clip, **options)
     except Exception as exc:  # the job fails, the worker keeps going

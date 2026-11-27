@@ -35,6 +35,7 @@
       {% if job.status == "done" %}
         <div class="muted">{{ clips|length }} clip{{ "" if clips|length == 1 else "s" }}, best first
           {% if clips %} · <a class="btn" href="/projects/{{ project.id }}/clips.zip">Download all (zip)</a>{% endif %}</div>
+        {% if keep_hours %}<div class="muted" id="expiry">This video and its clips are deleted {{ keep_hours|int }} h after upload{% if delete_in %} (in about {{ delete_in }}){% endif %}. Download the clips you want to keep.</div>{% endif %}
       {% elif job.status == "failed" %}
         <div class="err">Processing failed: {{ (job.error or "").splitlines()[0] }}</div>
       {% else %}

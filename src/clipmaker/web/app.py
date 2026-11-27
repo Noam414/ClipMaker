@@ -6,6 +6,7 @@ import re
 import shutil
 import zipfile
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
@@ -17,7 +18,7 @@ from clipmaker import __version__
 from clipmaker.config import Settings, get_settings
 from clipmaker.db import make_engine, ping
 from clipmaker.jobs import Runner, Worker, default_runner, enqueue, project_dir
-from clipmaker.store import Clip, Job, Project, init_db, session_factory
+from clipmaker.store import Clip, Job, Project, init_db, session_factory, utcnow
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
@@ -35,19 +36,30 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
     init_db(engine)
     Session = session_factory(engine)
     worker = Worker(engine, settings.data_dir, runner)
+    from clipmaker.cleanup import Janitor, has_room, retention_hours
+
+    janitor = Janitor(engine, settings.data_dir)
     max_upload = int(os.environ.get("CLIPMAKER_MAX_UPLOAD_MB", "4096")) * CHUNK
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if settings.worker:
             worker.start()
+            if janitor.enabled():
+                janitor.start()
         yield
+        janitor.stop()
         worker.stop()
 
     app = FastAPI(title="ClipMaker", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = engine
     app.state.worker = worker
+    app.state.janitor = janitor
+
+    def _need_room() -> None:
+        if not has_room(engine, settings.data_dir):
+            raise HTTPException(503, "The server is full right now. Please try again in a few hours.")
 
     @app.get("/api/health")
     def health() -> dict:
@@ -59,6 +71,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         ext = Path(name).suffix.lower()
         if ext not in VIDEO_EXTS:
             raise HTTPException(400, f"unsupported file type {ext or '(none)'}; use one of {sorted(VIDEO_EXTS)}")
+        _need_room()
         with Session() as s:
             project = Project(name=Path(name).stem, source_file=f"source{ext}")
             s.add(project)
@@ -89,6 +102,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
         url = url.strip()
         if not is_url(url):
             raise HTTPException(400, "Paste a link that starts with http:// or https://.")
+        _need_room()
         platform = platform_of(url)
         if platform:
             if not rights:
@@ -194,8 +208,12 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
             job = p.jobs[-1] if p.jobs else None
             clips = sorted((c for c in p.clips if job is None or c.job_id == job.id),
                            key=lambda c: -c.score)
+            keep = retention_hours()
+            left = (p.created_at + timedelta(hours=keep) - utcnow()).total_seconds() if keep > 0 else 0
+            delete_in = (f"{int(left // 3600)} h" if left >= 3600 else f"{max(1, int(left // 60))} min") if keep else ""
             return TEMPLATES.TemplateResponse(request, "project.html",
-                                              {"project": p, "job": job, "clips": clips})
+                                              {"project": p, "job": job, "clips": clips,
+                                               "keep_hours": keep, "delete_in": delete_in})
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):

@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-11-26T00:36:01+00:00",
-  "git_sha": "f31d82c",
+  "timestamp": "2026-11-27T00:33:55+00:00",
+  "git_sha": "4eb0e8e",
   "version": "0.1.0",
-  "eval_seconds": 199.6,
+  "eval_seconds": 145.4,
   "summary": {
     "fixtures": 6,
     "clip_count": 10,
@@ -15,14 +15,14 @@
     "scene_cut_precision": 1.0,
     "scene_cut_recall": 1.0,
     "valid_output_rate": 1.0,
-    "seconds_per_input_minute": 45.644,
-    "time_to_all_clips_s": 83.7,
-    "extrapolated_60min_s": 183.5,
+    "seconds_per_input_minute": 25.724,
+    "time_to_all_clips_s": 76.3,
+    "extrapolated_60min_s": 167.9,
     "speed_stages_s": {
-      "transcribe": 21.9,
-      "scenes": 11.3,
-      "render": 50.2,
-      "other": 0.3
+      "transcribe": 20.2,
+      "scenes": 10.7,
+      "render": 45.3,
+      "other": 0.2
     }
   },
   "fixtures": {
@@ -37,8 +37,8 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 2,
-        "seconds_per_input_minute": 29.59,
-        "time_to_all_clips_s": 32.0
+        "seconds_per_input_minute": 19.68,
+        "time_to_all_clips_s": 21.3
       },
       "clips": [
         {
@@ -68,8 +68,8 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 1,
-        "seconds_per_input_minute": 48.86,
-        "time_to_all_clips_s": 10.5
+        "seconds_per_input_minute": 30.1,
+        "time_to_all_clips_s": 6.4
       },
       "clips": [
         {
@@ -92,8 +92,8 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 1,
-        "seconds_per_input_minute": 80.0,
-        "time_to_all_clips_s": 23.1
+        "seconds_per_input_minute": 41.92,
+        "time_to_all_clips_s": 12.1
       },
       "clips": [
         {
@@ -116,8 +116,8 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 1,
-        "seconds_per_input_minute": 46.01,
-        "time_to_all_clips_s": 23.2
+        "seconds_per_input_minute": 26.26,
+        "time_to_all_clips_s": 13.2
       },
       "clips": [
         {
@@ -140,8 +140,8 @@
         "scene_cut_recall": 1.0,
         "valid_output_rate": null,
         "clip_count": 0,
-        "seconds_per_input_minute": 23.76,
-        "time_to_all_clips_s": 11.9
+        "seconds_per_input_minute": 10.66,
+        "time_to_all_clips_s": 5.3
       },
       "clips": []
     },
@@ -156,8 +156,8 @@
         "scene_cut_recall": null,
         "valid_output_rate": 1.0,
         "clip_count": 5,
-        "seconds_per_input_minute": 7.67,
-        "time_to_all_clips_s": 83.7
+        "seconds_per_input_minute": 6.99,
+        "time_to_all_clips_s": 76.3
       },
       "clips": [
         {
@@ -197,15 +197,15 @@
         }
       ],
       "speed": {
-        "time_to_all_clips_s": 83.7,
+        "time_to_all_clips_s": 76.3,
         "input_minutes": 10.91,
         "stages_s": {
-          "transcribe": 21.9,
-          "scenes": 11.3,
-          "render": 50.2,
-          "other": 0.3
+          "transcribe": 20.2,
+          "scenes": 10.7,
+          "render": 45.3,
+          "other": 0.2
         },
-        "extrapolated_60min_s": 183.5,
+        "extrapolated_60min_s": 167.9,
         "target_s": 300.0,
         "meets_target": true
       }
