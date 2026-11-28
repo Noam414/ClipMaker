@@ -17,7 +17,7 @@ re-checks open items every night and moves resolved ones to the bottom.
 
 ### H-002: Oracle Cloud free server for the live website (M7, D-013)
 - **Why:** the website must run on a server so visitors don't depend on their own computers. Oracle's "Always Free" tier gives one 2-core ARM server with 12 GB RAM and 200 GB disk at no cost; the agent can't sign up or deploy for you.
-- **When:** the deploy kit is ready (2026-11-27, `deploy/oracle/`, tested in CI on ARM). The free-tier guardrails (upload/length limits, daily limit per visitor, auto-delete after 24 h) come in the next nights; you can create the server now, or wait for them before sharing the link publicly. A server that sits idle for about a week may be reclaimed by Oracle, so start ClipMaker on it right away (step 5).
+- **When:** now. The deploy kit (2026-11-27, `deploy/oracle/`, tested in CI on ARM) already turns on the public-site guardrails (auto-delete after 24 h, private projects, 5 videos/day per visitor, upload/length limits, edit limit). A server that sits idle for about a week may be reclaimed by Oracle, so start ClipMaker on it right away (step 5).
 - **Steps (~20 min):**
   1. Sign up at cloud.oracle.com/free (a credit card is needed for identity verification; Always Free resources are not charged). Pick a home region close to your users; it can't be changed later.
   2. Compute → Instances → Create instance: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex** with **2 OCPU / 12 GB**. Upload or generate an SSH key and keep the private key. If it says "out of capacity", retry later or in another availability domain.
