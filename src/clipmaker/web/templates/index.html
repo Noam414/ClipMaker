@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipMaker</title>
+  <style>
+    :root { --bg: #0f1115; --panel: #181b22; --fg: #f2f2f2; --accent: #ffb020; --muted: #8a8f98; --bad: #ff5a5a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+    main { max-width: 720px; margin: 0 auto; padding: 48px 16px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; }
+    h1 span { color: var(--accent); }
+    h2 { margin: 32px 0 0; font-size: 1.1rem; }
+    p { color: var(--muted); line-height: 1.5; }
+    form { background: var(--panel); border: 2px dashed #2c313c; border-radius: 12px; padding: 24px; text-align: center; }
+    form.link { margin-top: 12px; border-style: solid; }
+    label.rights { display: block; margin: 8px 0; font-size: 14px; }
+    input[type=url] { display: block; width: 100%; box-sizing: border-box; margin: 12px 0; padding: 10px; border-radius: 8px;
+                      border: 1px solid #2c313c; background: transparent; color: inherit; font: inherit; }
+    form.drag { border-color: var(--accent); }
+    input[type=file] { display: block; margin: 12px auto; color: var(--muted); max-width: 100%; }
+    button { background: var(--accent); color: #111; border: 0; border-radius: 8px; padding: 10px 20px; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { margin-top: 24px; background: var(--panel); border-radius: 12px; padding: 16px; }
+    .bar { height: 10px; background: #2c313c; border-radius: 5px; overflow: hidden; margin: 8px 0; }
+    .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+    .err { color: var(--bad); white-space: pre-wrap; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 8px 0; border-top: 1px solid #2c313c; }
+    li a { color: var(--accent); }
+    .score { color: var(--muted); font-size: .9em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Clip<span>Maker</span></h1>
+    <p>Turn long videos into short vertical clips. Upload a video and ClipMaker finds the best moments,
+       reframes them to 9:16 and adds captions.</p>
+    <form id="upload">
+      <strong>Drop a video here or choose a file</strong>
+      <input type="file" id="file" name="file" accept="video/*">
+      <button id="go" type="submit">Make clips</button>
+    </form>
+    <form id="link" class="link">
+      <strong>…or paste a link (a video file, YouTube or Twitch)</strong>
+      <input type="url" id="url" name="url" placeholder="https://www.youtube.com/watch?v=…" required>
+      <label class="rights"><input type="checkbox" id="rights"> I own this video or have the rights to use it</label>
+      <button id="go-link" type="submit">Import link</button>
+    </form>
+    <section id="status" hidden>
+      <div id="label">Uploading…</div>
+      <div class="bar"><div id="fill"></div></div>
+      <div id="error" class="err"></div>
+    </section>
+    {% if recent %}
+    <h2>Recent videos</h2>
+    <ul id="recent">
+      {% for p in recent %}<li><a href="/projects/{{ p.id }}">{{ p.name }}</a>
+        <span class="score">{{ p.status }} · {{ p.clips }} clip{{ "" if p.clips == 1 else "s" }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+    <p>Version {{ version }}</p>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const form = $("upload"), fileInput = $("file");
+    function show(label, frac) {
+      $("status").hidden = false;
+      $("label").textContent = label;
+      $("fill").style.width = Math.round(frac * 100) + "%";
+    }
+    async function poll(jobId, projectId) {
+      const r = await fetch(`/api/jobs/${jobId}`);
+      const job = await r.json();
+      if (job.status === "failed") {
+        show("Failed", 1); $("error").textContent = (job.error || "").split("\n")[0]; $("go").disabled = false; return;
+      }
+      if (job.status !== "done" && job.clips_ready > 0) {
+        location.href = `/projects/${projectId}`; return;  // first clip is ready: the gallery fills in from here
+      }
+      if (job.status !== "done") {
+        show(job.status === "queued" ? (job.queue_ahead ? `Waiting in queue: ${job.queue_ahead} video${job.queue_ahead === 1 ? "" : "s"} ahead of you…` : "Waiting in queue…") : job.stage === "download" ? `Downloading the video… ${Math.round(100 * job.progress)}%` : `Working: ${job.stage}`, job.progress);
+        setTimeout(() => poll(jobId, projectId), 1000); return;
+      }
+      show("Done", 1);
+      location.href = `/projects/${projectId}`;
+    }
+    function upload(file) {
+      if (!file) return;
+      $("go").disabled = true; $("error").textContent = "";
+      const data = new FormData(); data.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/projects");
+      xhr.upload.onprogress = (e) => e.lengthComputable && show(`Uploading… ${Math.round(100 * e.loaded / e.total)}%`, e.loaded / e.total);
+      xhr.onload = () => {
+        let body = {}; try { body = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status !== 201) { show("Upload failed", 0); $("error").textContent = body.detail || xhr.statusText; $("go").disabled = false; return; }
+        show("Waiting in queue…", 0); poll(body.job_id, body.project_id);
+      };
+      xhr.onerror = () => { show("Upload failed", 0); $("go").disabled = false; };
+      xhr.send(data);
+    }
+    $("link").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("go-link").disabled = true; $("error").textContent = "";
+      show("Checking the link…", 0);
+      const r = await fetch("/api/projects/link", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                    body: JSON.stringify({url: $("url").value, rights: $("rights").checked})});
+      const body = await r.json();
+      if (!r.ok) { show("Can't import this link", 1); $("error").textContent = body.detail || "Error"; $("go-link").disabled = false; return; }
+      poll(body.job_id, body.project_id);
+    });
+    form.addEventListener("submit", (e) => { e.preventDefault(); upload(fileInput.files[0]); });
+    form.addEventListener("dragover", (e) => { e.preventDefault(); form.classList.add("drag"); });
+    form.addEventListener("dragleave", () => form.classList.remove("drag"));
+    form.addEventListener("drop", (e) => { e.preventDefault(); form.classList.remove("drag"); upload(e.dataTransfer.files[0]); });
+  </script>
+</body>
+</html>

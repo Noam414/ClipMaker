@@ -1,0 +1,14 @@
+services:
+  clipmaker:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - clipmaker-cache:/cache
+    env_file:
+      - path: .env
+        required: false
+
+volumes:
+  clipmaker-cache:

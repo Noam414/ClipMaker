@@ -1,0 +1,204 @@
+from clipmaker.captions import clip_words, group_words, write_ass
+from clipmaker.media import probe
+from clipmaker.render import center_crop, render_clip
+
+
+def _words(text, start=10.0, step=0.4):
+    return [{"start": start + i * step, "end": start + (i + 1) * step - 0.05, "word": w}
+            for i, w in enumerate(text.split())]
+
+
+def test_group_words_breaks_on_sentence_and_length():
+    caps = group_words(_words("Stop scrolling. This one trick will save you an hour"), offset=10.0)
+    texts = [c.text for c in caps]
+    assert texts[0] == "Stop scrolling."
+    assert all(len(t.split()) <= 4 and len(t) <= 22 for t in texts)
+    assert caps[0].start == 0.0
+    # gaps closed, in order
+    assert all(a.end <= b.start + 1e-9 for a, b in zip(caps, caps[1:]))
+    assert all(a.end == b.start for a, b in zip(caps, caps[1:]))
+
+
+def test_clip_words_filters_range():
+    ws = _words("a b c d e")
+    assert [w["word"] for w in clip_words(ws, 10.4, 11.2)] == ["b", "c"]
+
+
+def test_write_ass_escapes_and_times(tmp_path):
+    caps = group_words(_words("hello {world}"), offset=10.0)
+    text = write_ass(caps, tmp_path / "x.ass").read_text(encoding="utf-8")
+    assert "PlayResY: 1920" in text
+    assert "\\{world\\}" in text
+    assert "Dialogue: 0,0:00:00.00," in text
+
+
+def test_render_with_hebrew_captions(tiny_video, tmp_path):
+    caps = group_words(_words("שלום לכולם, היום נדבר.", start=0.2), offset=0.0)
+    ass = write_ass(caps, tmp_path / "he.ass")
+    out = render_clip(tiny_video, tmp_path / "c.mp4", 0.0, 2.0, center_crop(640, 360), subtitles=ass)
+    assert probe(out).height == 1920
+
+
+def _highlight_side(tmp_path, text, style="bold"):
+    """Render a caption line whose first word is active; return the active word's
+    horizontal centre relative to the whole line (0 = left edge, 1 = right edge)."""
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    ws = [{"start": 0.0 + i * 0.5, "end": 0.45 + i * 0.5, "word": w} for i, w in enumerate(text.split())]
+    ass = write_ass(group_words(ws, 0.0, max_words=8, max_chars=60), tmp_path / "hl.ass", style=style,
+                    keywords=False)
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=1",
+         "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", "0.2", "-frames:v", "1",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+    img = np.frombuffer(proc.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+    r, g, b = img[..., 0], img[..., 1], img[..., 2]
+    text_cols = np.nonzero(((r > 200) & (g > 180)).any(axis=0))[0]
+    hl_cols = np.nonzero(((r > 200) & (g > 180) & (b < 90)).any(axis=0))[0]
+    assert len(hl_cols) and len(text_cols)
+    return (hl_cols.mean() - text_cols.min()) / (text_cols.max() - text_cols.min())
+
+
+def test_karaoke_first_word_is_left_in_english(tmp_path):
+    assert _highlight_side(tmp_path, "one two three four") < 0.3
+
+
+def test_karaoke_first_word_is_right_in_hebrew(tmp_path):
+    # RTL: the first spoken word must be drawn at the right end of the line
+    assert _highlight_side(tmp_path, "אחת שתיים שלוש ארבע") > 0.7
+
+
+def test_styles_write_karaoke_events(tmp_path):
+    from clipmaker.captions import STYLES
+
+    caps = group_words(_words("one two three"), offset=10.0)
+    for name in STYLES:
+        text = write_ass(caps, tmp_path / f"{name}.ass", style=name).read_text(encoding="utf-8")
+        events = [ln for ln in text.splitlines() if ln.startswith("Dialogue:")]
+        assert len(events) == (1 if name == "basic" else 3)
+        assert text.count(",-1\n") == 2  # auto base direction for RTL (Default + Title)
+    assert "ONE" in (tmp_path / "pop.ass").read_text(encoding="utf-8")
+
+
+def test_pick_keyword_prefers_numbers_then_strong_words():
+    from clipmaker.keywords import pick_keyword
+
+    assert pick_keyword("I failed 3 times".split()) == 2
+    assert pick_keyword("this was amazing".split()) == 2
+    assert pick_keyword("the secret is simple".split()) == 1
+    assert pick_keyword("just a normal line".split()) is None
+    assert pick_keyword("זו הטעות הכי גדולה".split()) == 1
+
+
+def test_keyword_coloured_and_emoji_event(tmp_path):
+    from clipmaker.captions import STYLES, caption_keywords
+
+    caps = group_words(_words("I love this. Normal words here"), offset=10.0)
+    assert caption_keywords(caps) == ["love"]
+    text = write_ass(caps, tmp_path / "k.ass", style="bold", emoji=True).read_text(encoding="utf-8")
+    kw = STYLES["bold"].keyword_colour
+    assert "{\\c" + kw + "}love{\\r}" in text
+    emoji = [ln for ln in text.splitlines() if ln.startswith("Dialogue: 1,")]
+    assert len(emoji) == 1 and "❤" in emoji[0] and "\\pos(" in emoji[0]
+    # emoji appears when the keyword is spoken (2nd word, 0.4 s in)
+    assert emoji[0].startswith("Dialogue: 1,0:00:00.40,")
+    off = write_ass(caps, tmp_path / "n.ass", style="bold", keywords=False).read_text(encoding="utf-8")
+    assert kw not in off and "Dialogue: 1," not in off
+
+
+def test_basic_style_keeps_keyword_colour(tmp_path):
+    from clipmaker.captions import STYLES
+
+    caps = group_words(_words("we tried 100 times"), offset=10.0)
+    text = write_ass(caps, tmp_path / "b.ass", style="basic").read_text(encoding="utf-8")
+    assert "{\\c" + STYLES["basic"].keyword_colour + "}100{\\r}" in text
+
+
+def test_emoji_glyph_is_drawn(tmp_path):
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    ws = [{"start": 0.0, "end": 0.4, "word": "pure"}, {"start": 0.4, "end": 0.9, "word": "love"}]
+    ass = write_ass(group_words(ws, 0.0), tmp_path / "e.ass", style="bold", emoji=True)
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=1",
+         "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", "0.8", "-frames:v", "1",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+    img = np.frombuffer(proc.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+    red = (img[..., 0] > 200) & (img[..., 1] < 120) & (img[..., 2] < 120)
+    rows = np.nonzero(red.any(axis=1))[0]
+    assert len(rows) > 40  # a sizeable red heart
+    assert rows.max() < 1920 - 420 - 60  # above the caption line
+
+
+def test_hook_title():
+    from clipmaker.keywords import hook_title
+
+    assert hook_title("okay Here is the thing nobody tells you about motivation. More.") == \
+        "Here is the thing nobody tells you…"
+    assert hook_title("so, why do we quit? Because.") == "Why do we quit?"
+    assert hook_title("Stop scrolling.") == "Stop scrolling"
+    assert hook_title("אז הסוד הוא פשוט. עוד") == "הסוד הוא פשוט"
+    assert hook_title("um") == ""
+    # a filler-only first sentence (Moonshine writes "Okay." as its own sentence) is skipped
+    assert hook_title("Okay. Here is the thing nobody tells you about motivation.") == \
+        "Here is the thing nobody tells you…"
+    assert hook_title("Um. So.") == ""
+
+
+def test_title_and_progress_bar_drawn(tmp_path):
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    ws = [{"start": 0.0, "end": 0.9, "word": "hello"}]
+    ass = write_ass(group_words(ws, 0.0), tmp_path / "t.ass", style="bold", title="Big title",
+                    title_seconds=1.0, progress_duration=2.0)
+    text = ass.read_text(encoding="utf-8")
+    assert "Style: Title," in text and "Big title" in text and "\\p1" in text
+
+    def frame(t):
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=2",
+             "-vf", f"subtitles=filename={ass.as_posix()}", "-ss", str(t), "-frames:v", "1",
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+        return np.frombuffer(proc.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+
+    def bar_fill(img):
+        row = img[1920 - 7]
+        return ((row[:, 0] > 200) & (row[:, 1] > 180)).mean()  # yellow accent of "bold"
+
+    early, late = frame(0.5), frame(1.5)
+    assert 0.15 < bar_fill(early) < 0.35 and 0.65 < bar_fill(late) < 0.85
+    card = lambda img: ((img[200:450, :, 0] > 200) & (img[200:450, :, 1] > 180) & (img[200:450, :, 2] < 90)).sum()
+    assert card(early) > 5000    # accent card behind the title
+    assert card(late) < 50       # title gone after title_seconds
+
+
+def test_punch_ins_spaced_and_strong_only():
+    from clipmaker.keywords import punch_ins, zoom_expression
+
+    caps = group_words(_words("I failed 3 times. The secret is simple. We tried 100 times. "
+                              "It was amazing for us."), offset=10.0)
+    wins = punch_ins(caps)
+    # "3" (number) at 0.8 s; "secret" is only a hook word; "100" (4.0 s) is too close to "3";
+    # "amazing" (strong word) at 5.6 s
+    assert [round(a, 1) for a, _ in wins] == [0.8, 5.6]
+    assert all(0.4 <= b - a <= 2.0 for a, b in wins)
+    assert zoom_expression([]) is None
+    assert zoom_expression(wins).startswith("if(gt(between(it,0.800,")
