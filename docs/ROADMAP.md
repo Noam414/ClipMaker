@@ -80,7 +80,7 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 ## M5: Web app
 - [x] Upload a video, background job queue, live progress (polling, D-012)
 - [x] Clip gallery with score, transcript and preview player (`/projects/<id>`)
-- [ ] Edit caption text and trim clip start and end, then re-render
+- [x] Edit caption text and trim clip start and end, then re-render (`/api/clips/<id>/edit`, an edit job, D-031)
 - [x] Download a single clip or all clips (zip)
 - [x] Database models for projects, jobs and clips, with migrations (Alembic, D-012)
 - [x] End-to-end test of the web flow (headless browser) on fixtures (`tests/test_e2e_web.py`, Playwright)

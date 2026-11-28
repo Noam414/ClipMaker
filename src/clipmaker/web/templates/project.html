@@ -25,6 +25,16 @@
     .btn { display: inline-block; font-weight: 700; text-decoration: none; margin: 4px 0 8px; }
     details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
     details p { line-height: 1.5; margin: 8px 0 0; }
+    form.edit { display: grid; gap: 6px; margin-top: 8px; }
+    form.edit label { font-size: .8rem; color: var(--muted); display: grid; gap: 2px; }
+    form.edit input, form.edit textarea { background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+      border-radius: 6px; padding: 6px 8px; font: inherit; width: 100%; }
+    form.edit textarea { min-height: 90px; resize: vertical; }
+    form.edit .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    form.edit button { background: var(--accent); color: #111; border: 0; border-radius: 6px; padding: 8px;
+      font-weight: 700; cursor: pointer; }
+    form.edit button:disabled { opacity: .5; cursor: wait; }
+    .status { font-size: .85rem; }
   </style>
 </head>
 <body>
@@ -63,10 +73,64 @@
           <div class="parts">{% for k, v in (c.data.get("score_parts") or {}).items() %}<span>{{ k }} {{ "%.0f"|format(v * 100) }}</span>{% endfor %}</div>
           {% if c.file %}<a class="btn" href="/media/{{ project.id }}/{{ c.file }}?download=1">Download</a>{% endif %}
           <details><summary>Transcript</summary><p dir="auto">{{ c.text }}</p></details>
+          {% if job and job.status == "done" and c.file %}
+          <details class="editbox"{% if c.id in editing %} open{% endif %}><summary>Edit captions / trim</summary>
+            <form class="edit" data-clip="{{ c.id }}" data-job="{{ editing.get(c.id, '') }}">
+              <label>Caption text<textarea name="text" dir="auto">{{ c.text }}</textarea></label>
+              <label>Title<input name="title" dir="auto" maxlength="120" value="{{ c.title }}"></label>
+              <div class="row">
+                <label>Start (s)<input name="start" type="number" step="0.1" min="0" value="{{ "%.1f"|format(c.start) }}"></label>
+                <label>End (s)<input name="end" type="number" step="0.1" min="0" value="{{ "%.1f"|format(c.end) }}"></label>
+              </div>
+              <button type="submit">Re-render clip</button>
+              <div class="status muted" role="status"></div>
+            </form>
+          </details>
+          {% endif %}
         </div>
       </article>
       {% endfor %}
     </div>
   </main>
+  <script>
+    // Edit a clip (M5): queue a re-render, then poll its job and reload when it's done.
+    function watch(form, jobId) {
+      const btn = form.querySelector("button"), status = form.querySelector(".status");
+      btn.disabled = true;
+      status.className = "status muted";
+      status.textContent = "Re-rendering…";
+      (async function poll() {
+        const r = await fetch(`/api/jobs/${jobId}`);
+        const j = r.ok ? await r.json() : {status: "failed", error: "lost track of the job"};
+        if (j.status === "done") return location.reload();
+        if (j.status === "failed") {
+          btn.disabled = false;
+          status.className = "status err";
+          status.textContent = "Re-render failed: " + (j.error || "").split("\n")[0];
+          return;
+        }
+        status.textContent = j.status === "queued" ? "Waiting in queue…" : "Re-rendering…";
+        setTimeout(poll, 2000);
+      })();
+    }
+    document.querySelectorAll("form.edit").forEach(form => {
+      if (form.dataset.job) watch(form, form.dataset.job);
+      form.addEventListener("submit", async ev => {
+        ev.preventDefault();
+        const f = new FormData(form), status = form.querySelector(".status");
+        const body = {text: f.get("text"), title: f.get("title"),
+                      start: parseFloat(f.get("start")), end: parseFloat(f.get("end"))};
+        const r = await fetch(`/api/clips/${form.dataset.clip}/edit`, {method: "POST",
+          headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          status.className = "status err";
+          status.textContent = j.detail || `Error ${r.status}`;
+          return;
+        }
+        watch(form, j.job_id);
+      });
+    });
+  </script>
 </body>
 </html>

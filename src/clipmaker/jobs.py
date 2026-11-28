@@ -87,11 +87,67 @@ def check_upload_length(source: Path) -> None:
                          f"{limit:g} minutes. Trim it or upload a shorter part.")
 
 
+def is_edit_job(job: Job) -> bool:
+    return bool((job.options or {}).get("edit"))
+
+
+def main_job(project: Project) -> Job | None:
+    """The project's latest clip-making job; edit jobs (re-renders of one clip) don't count."""
+    jobs = [j for j in project.jobs if not is_edit_job(j)]
+    return jobs[-1] if jobs else None
+
+
+def _fail(engine: Engine, job_id: int, exc: Exception) -> str:
+    from clipmaker.edit import EditError
+    from clipmaker.fetch import FetchError
+
+    log.exception("job %s failed", job_id)
+    with session_factory(engine)() as s:
+        job = s.get(Job, job_id)
+        job.status, job.stage, job.finished_at = "failed", "failed", utcnow()
+        user_safe = isinstance(exc, (FetchError, EditError))
+        prefix = "" if user_safe else f"{type(exc).__name__}: "
+        job.error = f"{prefix}{exc}"[:2000] + "\n" + traceback.format_exc()[-2000:]
+        s.commit()
+    return "failed"
+
+
+def run_edit_job(engine: Engine, data_dir: Path, job_id: int) -> str:
+    """Re-render one edited clip (M5, D-031) and update its row in place."""
+    from clipmaker.edit import rerender_clip
+
+    Session = session_factory(engine)
+    with Session() as s:
+        job = s.get(Job, job_id)
+        project = s.get(Project, job.project_id)
+        edit = dict(job.options["edit"])
+        clip = s.get(Clip, edit["clip_row"])
+        origin = s.get(Job, clip.job_id)
+        pdir, source_file = project_dir(data_dir, project.id), project.source_file
+        data, options = dict(clip.data or {}), dict(origin.options or {})
+    try:
+        _set_progress(engine, job_id, "re-render", 0.1)
+        new = rerender_clip(pdir, source_file, data, options, start=edit.get("start"),
+                            end=edit.get("end"), text=edit.get("text"), title=edit.get("title"))
+    except Exception as exc:
+        return _fail(engine, job_id, exc)
+    with Session() as s:
+        clip = s.get(Clip, edit["clip_row"])
+        clip.start, clip.end, clip.text = new["start"], new["end"], new.get("text") or ""
+        clip.title, clip.file, clip.data = new.get("title") or "", f"clips/{new['file']}", new
+        job = s.get(Job, job_id)
+        job.status, job.stage, job.progress, job.finished_at = "done", "done", 1.0, utcnow()
+        s.commit()
+    return "done"
+
+
 def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
     """Run one claimed job; store its clips. Returns the final status."""
     Session = session_factory(engine)
     with Session() as s:
         job = s.get(Job, job_id)
+        if is_edit_job(job):
+            return run_edit_job(engine, data_dir, job_id)
         project = s.get(Project, job.project_id)
         pdir = project_dir(data_dir, project.id)
         source, options, project_id = pdir / project.source_file, dict(job.options or {}), project.id
@@ -135,16 +191,7 @@ def run_job(engine: Engine, data_dir: Path, job_id: int, runner: Runner) -> str:
         result = runner(source, out_dir, progress=lambda st, f: _set_progress(engine, job_id, st, f),
                         on_clip=store_clip, **options)
     except Exception as exc:  # the job fails, the worker keeps going
-        log.exception("job %s failed", job_id)
-        with Session() as s:
-            job = s.get(Job, job_id)
-            job.status, job.stage, job.finished_at = "failed", "failed", utcnow()
-            from clipmaker.fetch import FetchError
-
-            prefix = "" if isinstance(exc, FetchError) else f"{type(exc).__name__}: "  # user-safe message
-            job.error = f"{prefix}{exc}"[:2000] + "\n" + traceback.format_exc()[-2000:]
-            s.commit()
-        return "failed"
+        return _fail(engine, job_id, exc)
     with Session() as s:
         for c in result.get("clips", []):
             if c["id"] not in stored:

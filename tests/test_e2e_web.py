@@ -61,6 +61,15 @@ def test_upload_to_gallery_in_browser(live_server, manifest):
             "v => new Promise(r => { if (v.readyState >= 1) r(v.duration); else v.onloadedmetadata = () => r(v.duration); })")
         assert src.endswith("clip_01.mp4") and ready > 5
         assert page.locator("a", has_text="Download all (zip)").count() == 1
+        # M5: edit the title in the browser and re-render; the page reloads with the new file
+        card = page.locator("article.card").first
+        card.locator("summary", has_text="Edit captions").click()
+        card.locator("input[name=title]").fill("Edited in the browser")
+        card.locator("button", has_text="Re-render clip").click()
+        page.wait_for_function(
+            "document.querySelector('article.card video').getAttribute('src').endsWith('clip_01_e2.mp4')",
+            timeout=120_000)
+        assert "Edited in the browser" in page.inner_text("article.card .title")
         page.goto(live_server + "/")
         assert page.locator("#recent a", has_text="portrait_short").count() == 1
         browser.close()

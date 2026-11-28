@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from clipmaker import __version__
 from clipmaker.config import Settings, get_settings
 from clipmaker.db import make_engine, ping
-from clipmaker.jobs import Runner, Worker, default_runner, enqueue, project_dir
+from clipmaker.jobs import Runner, Worker, default_runner, enqueue, is_edit_job, main_job, project_dir
 from clipmaker.store import Clip, Job, Project, init_db, session_factory, utcnow
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -205,6 +205,43 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
                     "clips": [c.to_dict() | {"url": f"/media/{p.id}/{c.file}" if c.file else None}
                               for c in p.clips]}
 
+    @app.post("/api/clips/{clip_id}/edit", status_code=202)
+    def edit_clip(clip_id: int, request: Request, start: float | None = Body(None),
+                  end: float | None = Body(None), text: str | None = Body(None),
+                  title: str | None = Body(None)) -> dict:
+        """Queue a re-render of one clip with new caption text, title and/or trim (M5, D-031)."""
+        from clipmaker.edit import EditError, check_trim, edit_bounds
+
+        with Session() as s:
+            clip = s.get(Clip, clip_id)
+            if clip is None:
+                raise HTTPException(404, "no such clip")
+            p = _own(s, clip.project_id, request)
+            job = main_job(p)
+            if job is None or job.status != "done" or clip.job_id != job.id:
+                raise HTTPException(409, "Clips can be edited once processing has finished.")
+            edits = [j for j in p.jobs if is_edit_job(j)]
+            if any(j.status in ("queued", "running") and j.options["edit"]["clip_row"] == clip_id
+                   for j in edits):
+                raise HTTPException(409, "This clip is already being re-rendered.")
+            limit = int(os.environ.get("CLIPMAKER_MAX_EDITS", "0") or 0)
+            if limit > 0 and len(edits) >= limit:
+                raise HTTPException(429, f"This project has reached its limit of {limit} edits.")
+            data, source_file, pid = dict(clip.data or {}), p.source_file, p.id
+        if text is not None and not text.strip():
+            raise HTTPException(400, "The caption text is empty.")
+        if text is not None and len(text) > 5000 or title is not None and len(title) > 500:
+            raise HTTPException(400, "The text is too long.")
+        try:
+            lo, hi = edit_bounds(project_dir(settings.data_dir, pid), data, source_file)
+            check_trim(data["start"] if start is None else start,
+                       data["end"] if end is None else end, lo, hi)
+        except EditError as exc:
+            raise HTTPException(400, str(exc)) from None
+        edit = {"clip_row": clip_id, "start": start, "end": end, "text": text, "title": title}
+        job = enqueue(engine, pid, {"edit": edit})
+        return {"job_id": job.id, "clip_id": clip_id, "bounds": [lo, hi]}
+
     def _download_name(project_id: int, suffix: str) -> str:
         with Session() as s:
             p = s.get(Project, project_id)
@@ -229,7 +266,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
     def download_all(project_id: int, request: Request):
         with Session() as s:
             p = _own(s, project_id, request)
-            job = p.jobs[-1] if p.jobs else None
+            job = main_job(p)
             files = [c.file for c in sorted(p.clips, key=lambda c: -c.score)
                      if c.file and job is not None and c.job_id == job.id]
         pdir = project_dir(settings.data_dir, project_id)
@@ -250,14 +287,16 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
     def project_page(request: Request, project_id: int):
         with Session() as s:
             p = _own(s, project_id, request)
-            job = p.jobs[-1] if p.jobs else None
+            job = main_job(p)
             clips = sorted((c for c in p.clips if job is None or c.job_id == job.id),
                            key=lambda c: -c.score)
             keep = retention_hours()
             left = (p.created_at + timedelta(hours=keep) - utcnow()).total_seconds() if keep > 0 else 0
             delete_in = (f"{int(left // 3600)} h" if left >= 3600 else f"{max(1, int(left // 60))} min") if keep else ""
+            editing = {j.options["edit"]["clip_row"]: j.id for j in p.jobs
+                       if is_edit_job(j) and j.status in ("queued", "running")}
             return TEMPLATES.TemplateResponse(request, "project.html",
-                                              {"project": p, "job": job, "clips": clips,
+                                              {"project": p, "job": job, "clips": clips, "editing": editing,
                                                "keep_hours": keep, "delete_in": delete_in})
 
     @app.get("/", response_class=HTMLResponse)
@@ -267,7 +306,7 @@ def create_app(settings: Settings | None = None, runner: Runner = default_runner
             if vis.private_mode():  # a public server shows each visitor only their own projects
                 q = q.where(Project.owner == request.state.visitor)
             projects = s.scalars(q).all()
-            recent = [{"id": p.id, "name": p.name, "status": p.jobs[-1].status if p.jobs else "-",
+            recent = [{"id": p.id, "name": p.name, "status": main_job(p).status if main_job(p) else "-",
                        "clips": len(p.clips)} for p in projects]
         return TEMPLATES.TemplateResponse(request, "index.html", {"version": __version__, "recent": recent})
 
