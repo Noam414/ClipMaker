@@ -101,7 +101,8 @@ scene detection ~4 s/min (on the whole video), render ~10 s per clip.
 - [x] Free-tier guardrails, part 2: per-visitor daily limit (`CLIPMAKER_DAILY_LIMIT`, per browser cookie **or** IP behind Caddy), visible queue position ("2 videos ahead of you"), and private projects (`CLIPMAKER_PRIVATE`): the home page lists only the visitor's own projects and other visitors get 404 on project pages, clips, zips and job status (D-030)
 - [x] Free-tier guardrails, part 3: max length for uploaded files (`CLIPMAKER_MAX_UPLOAD_MINUTES`, the kit sets 60; checked with ffprobe at the start of the job, links were already capped) (D-029)
 - [x] Step-by-step guide in H-002 so the owner deploys with one command (`sudo deploy/oracle/setup.sh`)
-- [ ] Smoke test against the live site (after H-002 is done): `scripts/smoke_live.py <url>` uploads a fixture and waits for clips
+- [x] Smoke test script: `scripts/smoke_live.py <url> [--video f.mp4] [--edit]` checks health, uploads, waits for the clips, checks one is a 1080x1920 MP4 with audio, optionally edits it; stdlib only, keeps the visitor cookie (tested against a local private-mode server)
+- [ ] Run the smoke test against the live site (after H-002 is done)
 
 ## M8: Publish to social accounts (later, after M7; D-014)
 - [ ] User accounts (builds on M6 "basic auth and multiple users")

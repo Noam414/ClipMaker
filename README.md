@@ -47,6 +47,7 @@ sudo deploy/oracle/setup.sh
 This installs Docker, opens ports 80/443, and starts ClipMaker behind Caddy (free automatic HTTPS) with
 the YouTube PO-token helper. Without a domain the site gets `https://<your-ip-with-dashes>.sslip.io`;
 set `CLIPMAKER_DOMAIN` in `deploy/oracle/.env` to use your own. Update: `git pull && sudo deploy/oracle/setup.sh`.
+Check a running site: `python scripts/smoke_live.py https://<site> --video short.mp4 --edit` (prints `SMOKE OK`).
 The database is backed up nightly to `<data>/backups` (`clipmaker backup`, `clipmaker backup --restore <file>`).
 
 ### Option B: Python 3.11+ (Windows PowerShell shown; same on macOS/Linux)

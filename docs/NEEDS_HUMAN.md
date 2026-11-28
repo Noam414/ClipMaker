@@ -30,6 +30,7 @@ re-checks open items every night and moves resolved ones to the bottom.
      sudo deploy/oracle/setup.sh
      ```
      The first run takes ~10–15 min (Docker, image build). At the end it prints `ClipMaker is live: https://<ip-with-dashes>.sslip.io` — a free HTTPS address, no domain needed. Own domain: point its DNS A record to the IP, set `CLIPMAKER_DOMAIN=clips.yourdomain.com` in `deploy/oracle/.env`, run `sudo deploy/oracle/setup.sh` again.
+  5b. Check it works, from your own computer (any short video you own, ~1 min): `python scripts/smoke_live.py https://<ip-with-dashes>.sslip.io --video my_clip.mp4 --edit` should end with `SMOKE OK`. It uses 1 of the site's 5 videos per day.
   6. Updates later: `cd ClipMaker && git pull && sudo deploy/oracle/setup.sh`.
   7. Backups: the database is copied every night at 03:30 to `/srv/clipmaker/data/backups` (14 kept). Uploaded videos and clips are not backed up.
 - **Agent check:** this section says the server exists.
